@@ -59,7 +59,15 @@ const errorTranslations: ErrorTranslation[] = [
   },
   {
     pattern: /email rate limit exceeded/i,
-    message: "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente."
+    message: "Muitas tentativas de envio de email. Por favor, aguarde 15-30 minutos antes de tentar novamente. Este é um limite de segurança do sistema."
+  },
+  {
+    pattern: /rate limit|too many requests|too many attempts/i,
+    message: "Muitas tentativas. Por favor, aguarde alguns minutos antes de tentar novamente. Este é um limite de segurança do sistema."
+  },
+  {
+    pattern: /signup_disabled/i,
+    message: "Cadastro temporariamente desabilitado. Tente novamente mais tarde."
   },
   
   // Erros de validação

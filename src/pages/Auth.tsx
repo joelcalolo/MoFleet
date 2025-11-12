@@ -22,6 +22,7 @@ const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [isResetPassword, setIsResetPassword] = useState(false);
+  const [lastAttemptTime, setLastAttemptTime] = useState<number>(0);
 
   useEffect(() => {
     // Verificar se está no modo de redefinição de senha
@@ -46,6 +47,14 @@ const Auth = () => {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevenir múltiplos submits muito rápidos (debounce de 2 segundos)
+    const now = Date.now();
+    if (now - lastAttemptTime < 2000) {
+      toast.error("Por favor, aguarde um momento antes de tentar novamente.");
+      return;
+    }
+    setLastAttemptTime(now);
     
     if (isResetPassword) {
       if (!newPassword || !confirmPassword) {
