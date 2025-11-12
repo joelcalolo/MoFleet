@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* MoFleet Color Palette */
+    /* Azul petróleo (#004C70) → confiança e profissionalismo */
+    /* Cinza grafite (#2B2B2B) → tecnologia e seriedade */
+    /* Verde-água (#4EC5A0) → inovação e fluidez */
+    /* Branco → clareza e simplicidade */
+
+    --background: 0 0% 100%;
+    --foreground: 0 0% 17%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 17%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 17%;
+
+    --primary: 197 100% 22%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 95%;
+    --secondary-foreground: 0 0% 17%;
+
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+
+    --accent: 163 50% 54%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: 197 100% 22%;
+
+    --radius: 0.5rem;
+    
+    --status-pending: 45 95% 55%;
+    --status-confirmed: 163 50% 54%;
+    --status-active: 197 100% 22%;
+    --status-completed: 197 100% 22%;
+    --status-cancelled: 0 0% 60%;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 0 0% 17%;
+
+    --sidebar-primary: 197 100% 22%;
+
+    --sidebar-primary-foreground: 0 0% 100%;
+
+    --sidebar-accent: 163 50% 95%;
+
+    --sidebar-accent-foreground: 0 0% 17%;
+
+    --sidebar-border: 0 0% 88%;
+
+    --sidebar-ring: 197 100% 22%;
+  }
+
+  .dark {
+    --background: 0 0% 8%;
+    --foreground: 0 0% 95%;
+
+    --card: 0 0% 12%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 197 100% 35%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 0 0% 18%;
+    --muted-foreground: 0 0% 60%;
+
+    --accent: 163 50% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 197 100% 35%;
+    
+    --status-pending: 45 95% 60%;
+    --status-confirmed: 163 50% 54%;
+    --status-active: 197 100% 35%;
+    --status-completed: 197 100% 35%;
+    --status-cancelled: 0 0% 50%;
+    --sidebar-background: 0 0% 10%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 197 100% 35%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 16%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 0 0% 16%;
+    --sidebar-ring: 197 100% 35%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* Gradientes personalizados para MoFleet */
+  .gradient-hero {
+    background: linear-gradient(135deg, hsl(197, 100%, 22%) 0%, hsl(163, 50%, 54%) 100%);
+  }
+
+  .bg-gradient-hero {
+    background: linear-gradient(135deg, hsl(197, 100%, 22%) 0%, hsl(163, 50%, 54%) 100%);
+  }
+
+  .gradient-section {
+    background: linear-gradient(to bottom, hsl(var(--background)) 0%, hsl(var(--muted)) 100%);
+  }
+
+  /* Sombras personalizadas */
+  .shadow-card {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+
+  .shadow-card-hover {
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+
+  /* Transições suaves */
+  .transition-smooth {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}

@@ -1,0 +1,259 @@
+import { useState, useMemo, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Edit, Trash2, CarFront, CarTaxiFront } from "lucide-react";
+import { toast } from "sonner";
+import { Reservation } from "@/pages/Reservations";
+import { handleError, logError } from "@/lib/errorHandler";
+import { Pagination } from "@/components/ui/pagination";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { formatAngolaDate } from "@/lib/dateUtils";
+
+interface ReservationListProps {
+  reservations: Reservation[];
+  loading: boolean;
+  onEdit: (reservation: Reservation) => void;
+  onRefresh: () => void;
+}
+
+const statusColors = {
+  pending: "bg-status-pending text-status-pending",
+  confirmed: "bg-status-confirmed text-status-confirmed",
+  active: "bg-status-active text-status-active",
+  completed: "bg-status-completed text-status-completed",
+  cancelled: "bg-status-cancelled text-status-cancelled",
+};
+
+const statusLabels = {
+  pending: "Pendente",
+  confirmed: "Confirmada",
+  active: "Em Andamento",
+  completed: "Concluída",
+  cancelled: "Cancelada",
+};
+
+export const ReservationList = ({ reservations, loading, onEdit, onRefresh }: ReservationListProps) => {
+  const navigate = useNavigate();
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [cancelId, setCancelId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Calcular páginas
+  const totalPages = Math.ceil(reservations.length / itemsPerPage);
+  const paginatedReservations = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    return reservations.slice(start, end);
+  }, [reservations, currentPage, itemsPerPage]);
+
+  // Resetar para primeira página quando a lista mudar
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(1);
+    }
+  }, [reservations.length, totalPages, currentPage]);
+
+  const handleCancel = async () => {
+    if (!cancelId) return;
+
+    try {
+      const { error } = await supabase
+        .from("reservations")
+        .update({ status: "cancelled" })
+        .eq("id", cancelId);
+
+      if (error) throw error;
+
+      toast.success("Reserva cancelada com sucesso");
+      onRefresh();
+    } catch (error: any) {
+      logError(error, "ReservationList - Cancel");
+      const errorMessage = handleError(error, "Erro ao cancelar reserva");
+      toast.error(errorMessage);
+    } finally {
+      setCancelId(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteId) return;
+
+    try {
+      const { error } = await supabase.from("reservations").delete().eq("id", deleteId);
+
+      if (error) throw error;
+
+      toast.success("Reserva removida com sucesso");
+      onRefresh();
+    } catch (error: any) {
+      logError(error, "ReservationList - Delete");
+      const errorMessage = handleError(error, "Erro ao remover reserva");
+      toast.error(errorMessage);
+    } finally {
+      setDeleteId(null);
+    }
+  };
+
+  if (loading) {
+    return <div className="text-center py-8 text-muted-foreground">Carregando...</div>;
+  }
+
+  if (reservations.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        Nenhuma reserva cadastrada ainda
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="rounded-lg border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Carro</TableHead>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Período</TableHead>
+              <TableHead>Tipo</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+              <TableHead>Criado Por</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {paginatedReservations.map((reservation) => (
+              <TableRow 
+                key={reservation.id}
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={() => navigate(`/reservation/${reservation.id}`)}
+              >
+                <TableCell className="font-medium">
+                  {reservation.cars
+                    ? `${reservation.cars.brand} ${reservation.cars.model}`
+                    : "N/A"}
+                </TableCell>
+                <TableCell>
+                  {reservation.customers?.name || "N/A"}
+                </TableCell>
+                <TableCell>
+                  {formatAngolaDate(reservation.start_date)} -{" "}
+                  {formatAngolaDate(reservation.end_date)}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1">
+                    {reservation.with_driver ? (
+                      <CarTaxiFront className="h-4 w-4" />
+                    ) : (
+                      <CarFront className="h-4 w-4" />
+                    )}
+                    <span className="text-xs">
+                      {reservation.location_type === "city" ? "Cidade" : "Fora"}
+                    </span>
+                  </div>
+                </TableCell>
+                <TableCell className="text-right font-semibold">
+                  {reservation.total_amount.toFixed(2)} AKZ
+                </TableCell>
+                <TableCell>
+                  {reservation.created_by || "N/A"}
+                </TableCell>
+                <TableCell>
+                  <Badge
+                    variant="outline"
+                    className={statusColors[reservation.status]}
+                  >
+                    {statusLabels[reservation.status]}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(reservation);
+                      }}
+                      disabled={reservation.status === "cancelled"}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    {reservation.status !== "cancelled" && reservation.status !== "completed" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCancelId(reservation.id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      {reservations.length > itemsPerPage && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          itemsPerPage={itemsPerPage}
+          totalItems={reservations.length}
+        />
+      )}
+
+      <AlertDialog open={!!cancelId} onOpenChange={() => setCancelId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar cancelamento</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja cancelar esta reserva? Esta ação alterará o status da reserva para "Cancelada".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleCancel} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Confirmar cancelamento
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover esta reserva? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+};
