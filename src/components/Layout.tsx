@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { Car, Calendar, Users, LayoutDashboard, LogOut, UserCircle, Settings, Truck, FileText } from "lucide-react";
+import { Car, Calendar, Users, LayoutDashboard, LogOut, UserCircle, Settings, Truck, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface LayoutProps {
@@ -14,6 +14,7 @@ const Layout = ({ children }: LayoutProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -54,55 +55,115 @@ const Layout = ({ children }: LayoutProps) => {
 
   if (!user) return null;
 
+  const sidebarWidth = sidebarCollapsed ? "w-16" : "w-64";
+
   return (
     <div className="flex min-h-screen bg-background">
-      <aside className="w-64 bg-card border-r border-border">
-        <div className="p-6">
-          <div className="flex items-center gap-2 mb-8">
-            <img src="/logo.png" alt="MoFleet" className="h-10 w-auto" />
-            <h1 className="text-xl font-bold">MoFleet</h1>
+      {/* Sidebar Fixo */}
+      <aside className={cn(
+        "fixed left-0 top-0 h-screen bg-card border-r border-border z-50 transition-all duration-300",
+        sidebarWidth
+      )}>
+        <div className="h-full flex flex-col">
+          {/* Header do Sidebar */}
+          <div className={cn(
+            "border-b border-border",
+            sidebarCollapsed ? "p-2" : "p-4"
+          )}>
+            <div className="flex items-center justify-between">
+              {!sidebarCollapsed && (
+                <div className="flex items-center gap-2">
+                  <img src="/logo.png" alt="MoFleet" className="h-8 w-auto" />
+                  <h1 className="text-lg font-bold">MoFleet</h1>
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className={cn(
+                  sidebarCollapsed ? "mx-auto" : "ml-auto"
+                )}
+                title={sidebarCollapsed ? "Expandir menu" : "Recolher menu"}
+              >
+                {sidebarCollapsed ? (
+                  <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronLeft className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
-          <nav className="space-y-2">
+
+          {/* Menu de Navegação */}
+          <nav className={cn(
+            "flex-1 overflow-y-auto space-y-2",
+            sidebarCollapsed ? "p-2" : "p-4"
+          )}>
             {menuItems.map((item) => (
               <Button
                 key={item.path}
                 variant={location.pathname === item.path ? "secondary" : "ghost"}
                 className={cn(
-                  "w-full justify-start",
+                  "w-full",
+                  sidebarCollapsed ? "justify-center px-0" : "justify-start",
                   location.pathname === item.path && "bg-secondary"
                 )}
                 onClick={() => navigate(item.path)}
+                title={sidebarCollapsed ? item.label : undefined}
               >
-                <item.icon className="mr-2 h-4 w-4" />
-                {item.label}
+                <item.icon className={cn("h-4 w-4", !sidebarCollapsed && "mr-2")} />
+                {!sidebarCollapsed && item.label}
               </Button>
             ))}
           </nav>
-        </div>
-        <div className="absolute bottom-0 w-64 p-6 border-t border-border bg-card">
-          <div className="mb-2 text-sm text-muted-foreground truncate">
-            {user.email}
-          </div>
-          <div className="space-y-2">
-            <Button
-              variant={location.pathname === "/settings" ? "secondary" : "outline"}
-              className={cn(
-                "w-full justify-start",
-                location.pathname === "/settings" && "bg-secondary"
-              )}
-              onClick={() => navigate("/settings")}
-            >
-              <Settings className="mr-2 h-4 w-4" />
-              Configurações
-            </Button>
-            <Button variant="outline" className="w-full" onClick={handleLogout}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Sair
-            </Button>
+
+          {/* Footer do Sidebar */}
+          <div className={cn(
+            "p-4 border-t border-border bg-card",
+            sidebarCollapsed ? "px-2" : ""
+          )}>
+            {!sidebarCollapsed && (
+              <div className="mb-2 text-xs text-muted-foreground truncate">
+                {user.email}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Button
+                variant={location.pathname === "/settings" ? "secondary" : "outline"}
+                className={cn(
+                  "w-full",
+                  sidebarCollapsed ? "justify-center px-0" : "justify-start",
+                  location.pathname === "/settings" && "bg-secondary"
+                )}
+                onClick={() => navigate("/settings")}
+                title={sidebarCollapsed ? "Configurações" : undefined}
+              >
+                <Settings className={cn("h-4 w-4", !sidebarCollapsed && "mr-2")} />
+                {!sidebarCollapsed && "Configurações"}
+              </Button>
+              <Button
+                variant="outline"
+                className={cn(
+                  "w-full",
+                  sidebarCollapsed ? "justify-center px-0" : "justify-start"
+                )}
+                onClick={handleLogout}
+                title={sidebarCollapsed ? "Sair" : undefined}
+              >
+                <LogOut className={cn("h-4 w-4", !sidebarCollapsed && "mr-2")} />
+                {!sidebarCollapsed && "Sair"}
+              </Button>
+            </div>
           </div>
         </div>
       </aside>
-      <main className="flex-1 overflow-auto">
+
+      {/* Conteúdo Principal com margem para o sidebar */}
+      <main className={cn(
+        "flex-1 overflow-auto transition-all duration-300",
+        sidebarCollapsed ? "ml-16" : "ml-64"
+      )}>
         {children}
       </main>
     </div>

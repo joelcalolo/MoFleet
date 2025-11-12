@@ -477,8 +477,6 @@ const Dashboard = () => {
                       <Alert 
                         key={reservation.id}
                         variant={isStartingToday ? "destructive" : "default"}
-                        className="cursor-pointer hover:bg-accent"
-                        onClick={() => window.location.href = "/reservations"}
                       >
                         <AlertCircle className="h-4 w-4" />
                         <AlertTitle>
@@ -526,8 +524,6 @@ const Dashboard = () => {
                             <Alert 
                               key={reservation.id}
                               variant={isReturningToday ? "destructive" : "default"}
-                              className="cursor-pointer hover:bg-accent"
-                              onClick={() => window.location.href = "/fleet"}
                             >
                               <AlertCircle className="h-4 w-4" />
                               <AlertTitle>
