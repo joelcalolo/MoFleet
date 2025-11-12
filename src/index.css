@@ -117,6 +117,11 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    /* Reduzir tamanho geral para 75% (equivalente a zoom 75%) */
+    font-size: 75%;
+  }
+
   body {
     @apply bg-background text-foreground;
   }

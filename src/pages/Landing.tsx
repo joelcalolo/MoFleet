@@ -1,16 +1,67 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Car, Calendar, Users, BarChart3, Shield, Zap, CheckCircle, ArrowRight } from "lucide-react";
+import { Car, Calendar, Users, BarChart3, Shield, Zap, CheckCircle, ArrowRight, Download } from "lucide-react";
 import { useEffect, useState } from "react";
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
 
 const Landing = () => {
   const navigate = useNavigate();
   const [isVisible, setIsVisible] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallButton, setShowInstallButton] = useState(false);
 
   useEffect(() => {
     setIsVisible(true);
   }, []);
+
+  useEffect(() => {
+    // Detectar se o PWA pode ser instalado
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      const promptEvent = e as BeforeInstallPromptEvent;
+      setDeferredPrompt(promptEvent);
+      setShowInstallButton(true);
+    };
+
+    // Verificar se já está instalado
+    const checkIfInstalled = () => {
+      if (window.matchMedia('(display-mode: standalone)').matches) {
+        setShowInstallButton(false);
+      }
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    checkIfInstalled();
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+
+    // Mostrar o prompt de instalação
+    deferredPrompt.prompt();
+
+    // Aguardar a resposta do usuário
+    const { outcome } = await deferredPrompt.userChoice;
+
+    if (outcome === 'accepted') {
+      console.log('Usuário aceitou a instalação do PWA');
+    } else {
+      console.log('Usuário rejeitou a instalação do PWA');
+    }
+
+    // Limpar o prompt
+    setDeferredPrompt(null);
+    setShowInstallButton(false);
+  };
 
   const features = [
     {
@@ -58,6 +109,17 @@ const Landing = () => {
             </h1>
           </div>
           <div className="flex gap-3">
+            {showInstallButton && (
+              <Button
+                variant="outline"
+                onClick={handleInstallClick}
+                className="font-medium"
+                title="Instalar aplicativo"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Instalar App
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => navigate("/auth")} className="font-medium">
               Entrar
             </Button>
@@ -263,6 +325,17 @@ const Landing = () => {
             >
               Fazer Login
             </Button>
+            {showInstallButton && (
+              <Button 
+                size="lg" 
+                variant="outline" 
+                onClick={handleInstallClick}
+                className="font-semibold px-8 py-4 text-lg border-2 hover:scale-105 transition-all duration-300"
+              >
+                <Download className="mr-2 h-5 w-5" />
+                Instalar App
+              </Button>
+            )}
           </div>
           <p className="text-sm text-muted-foreground mt-6">
             Sistema desenvolvido pela Expresso Kiuvo
