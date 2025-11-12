@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Car } from "@/pages/Cars";
 import { useCompany } from "@/hooks/useCompany";
@@ -288,6 +289,20 @@ export const CarForm = ({ car, onClose }: CarFormProps) => {
           rows={3}
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+        />
+      </div>
+
+      <div className="flex items-center justify-between space-x-2 border-t pt-4">
+        <div className="space-y-0.5">
+          <Label htmlFor="is_available">Disponível para aluguer</Label>
+          <p className="text-sm text-muted-foreground">
+            Marque se o carro está disponível para ser alugado
+          </p>
+        </div>
+        <Switch
+          id="is_available"
+          checked={formData.is_available}
+          onCheckedChange={(checked) => setFormData({ ...formData, is_available: checked })}
         />
       </div>
 

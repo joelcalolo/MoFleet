@@ -7,6 +7,7 @@ import { Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Car } from "@/pages/Cars";
 import { Pagination } from "@/components/ui/pagination";
+import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,6 +63,22 @@ export const CarList = ({ cars, loading, onEdit, onRefresh }: CarListProps) => {
     }
   };
 
+  const handleToggleAvailability = async (carId: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from("cars")
+        .update({ is_available: !currentStatus })
+        .eq("id", carId);
+
+      if (error) throw error;
+
+      toast.success(`Carro ${!currentStatus ? "disponibilizado" : "indisponibilizado"} com sucesso`);
+      onRefresh();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao atualizar disponibilidade");
+    }
+  };
+
   if (loading) {
     return <div className="text-center py-8 text-muted-foreground">Carregando...</div>;
   }
@@ -86,6 +103,7 @@ export const CarList = ({ cars, loading, onEdit, onRefresh }: CarListProps) => {
               <TableHead className="text-right">Cidade s/ mot.</TableHead>
               <TableHead className="text-right">Fora s/ mot.</TableHead>
               <TableHead className="text-right">Caução</TableHead>
+              <TableHead>Disponível</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
@@ -101,6 +119,12 @@ export const CarList = ({ cars, loading, onEdit, onRefresh }: CarListProps) => {
                 <TableCell className="text-right">{car.price_city_without_driver.toFixed(2)} AKZ</TableCell>
                 <TableCell className="text-right">{car.price_outside_without_driver.toFixed(2)} AKZ</TableCell>
                 <TableCell className="text-right">{car.deposit_amount.toFixed(2)} AKZ</TableCell>
+                <TableCell>
+                  <Switch
+                    checked={car.is_available}
+                    onCheckedChange={() => handleToggleAvailability(car.id, car.is_available)}
+                  />
+                </TableCell>
                 <TableCell>
                   <Badge variant={car.is_available ? "default" : "secondary"}>
                     {car.is_available ? "Disponível" : "Indisponível"}
