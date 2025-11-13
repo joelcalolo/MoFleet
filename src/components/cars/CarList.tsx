@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Car } from "@/pages/Cars";
 import { Pagination } from "@/components/ui/pagination";
@@ -29,22 +30,41 @@ interface CarListProps {
 export const CarList = ({ cars, loading, onEdit, onRefresh }: CarListProps) => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
   const itemsPerPage = 10;
 
+  // Filtrar carros baseado na pesquisa
+  const filteredCars = useMemo(() => {
+    if (!searchQuery.trim()) return cars;
+    
+    const query = searchQuery.toLowerCase();
+    return cars.filter(car => 
+      car.brand.toLowerCase().includes(query) ||
+      car.model.toLowerCase().includes(query) ||
+      car.license_plate.toLowerCase().includes(query) ||
+      car.car_type.toLowerCase().includes(query)
+    );
+  }, [cars, searchQuery]);
+
   // Calcular páginas
-  const totalPages = Math.ceil(cars.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredCars.length / itemsPerPage);
   const paginatedCars = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     const end = start + itemsPerPage;
-    return cars.slice(start, end);
-  }, [cars, currentPage, itemsPerPage]);
+    return filteredCars.slice(start, end);
+  }, [filteredCars, currentPage, itemsPerPage]);
 
   // Resetar para primeira página quando a lista mudar
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
       setCurrentPage(1);
     }
-  }, [cars.length, totalPages, currentPage]);
+  }, [filteredCars.length, totalPages, currentPage]);
+
+  // Resetar página quando pesquisa mudar
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -93,7 +113,29 @@ export const CarList = ({ cars, loading, onEdit, onRefresh }: CarListProps) => {
 
   return (
     <>
-      <div className="rounded-lg border bg-card">
+      <div className="mb-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Pesquisar por marca, modelo, matrícula ou tipo..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        {searchQuery && (
+          <p className="text-sm text-muted-foreground mt-2">
+            {filteredCars.length} {filteredCars.length === 1 ? "carro encontrado" : "carros encontrados"}
+          </p>
+        )}
+      </div>
+
+      {filteredCars.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          Nenhum carro encontrado com "{searchQuery}"
+        </div>
+      ) : (
+        <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -153,8 +195,9 @@ export const CarList = ({ cars, loading, onEdit, onRefresh }: CarListProps) => {
           </TableBody>
         </Table>
       </div>
+      )}
 
-      {cars.length > itemsPerPage && (
+      {filteredCars.length > itemsPerPage && (
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}

@@ -2,9 +2,10 @@ import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Edit, Trash2, CarFront, CarTaxiFront } from "lucide-react";
+import { Edit, Trash2, CarFront, CarTaxiFront, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Reservation } from "@/pages/Reservations";
 import { handleError, logError } from "@/lib/errorHandler";
@@ -49,22 +50,48 @@ export const ReservationList = ({ reservations, loading, onEdit, onRefresh }: Re
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
   const itemsPerPage = 10;
 
+  // Filtrar reservas baseado na pesquisa
+  const filteredReservations = useMemo(() => {
+    if (!searchQuery.trim()) return reservations;
+    
+    const query = searchQuery.toLowerCase();
+    return reservations.filter(reservation => {
+      const carName = reservation.cars 
+        ? `${reservation.cars.brand} ${reservation.cars.model} ${reservation.cars.license_plate}`.toLowerCase()
+        : "";
+      const customerName = reservation.customers?.name?.toLowerCase() || "";
+      const statusLabel = statusLabels[reservation.status]?.toLowerCase() || "";
+      const createdBy = reservation.created_by?.toLowerCase() || "";
+      
+      return carName.includes(query) ||
+        customerName.includes(query) ||
+        statusLabel.includes(query) ||
+        createdBy.includes(query);
+    });
+  }, [reservations, searchQuery]);
+
   // Calcular páginas
-  const totalPages = Math.ceil(reservations.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredReservations.length / itemsPerPage);
   const paginatedReservations = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     const end = start + itemsPerPage;
-    return reservations.slice(start, end);
-  }, [reservations, currentPage, itemsPerPage]);
+    return filteredReservations.slice(start, end);
+  }, [filteredReservations, currentPage, itemsPerPage]);
 
   // Resetar para primeira página quando a lista mudar
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
       setCurrentPage(1);
     }
-  }, [reservations.length, totalPages, currentPage]);
+  }, [filteredReservations.length, totalPages, currentPage]);
+
+  // Resetar página quando pesquisa mudar
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   const handleCancel = async () => {
     if (!cancelId) return;
@@ -121,7 +148,29 @@ export const ReservationList = ({ reservations, loading, onEdit, onRefresh }: Re
 
   return (
     <>
-      <div className="rounded-lg border bg-card">
+      <div className="mb-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Pesquisar por carro, cliente, status ou criado por..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        {searchQuery && (
+          <p className="text-sm text-muted-foreground mt-2">
+            {filteredReservations.length} {filteredReservations.length === 1 ? "reserva encontrada" : "reservas encontradas"}
+          </p>
+        )}
+      </div>
+
+      {filteredReservations.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          Nenhuma reserva encontrada com "{searchQuery}"
+        </div>
+      ) : (
+        <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -212,8 +261,9 @@ export const ReservationList = ({ reservations, loading, onEdit, onRefresh }: Re
           </TableBody>
         </Table>
       </div>
+      )}
 
-      {reservations.length > itemsPerPage && (
+      {filteredReservations.length > itemsPerPage && (
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}

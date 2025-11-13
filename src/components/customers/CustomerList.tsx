@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Customer } from "@/pages/Customers";
 import { Pagination } from "@/components/ui/pagination";
@@ -28,22 +29,41 @@ interface CustomerListProps {
 export const CustomerList = ({ customers, loading, onEdit, onRefresh }: CustomerListProps) => {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
   const itemsPerPage = 10;
 
+  // Filtrar clientes baseado na pesquisa
+  const filteredCustomers = useMemo(() => {
+    if (!searchQuery.trim()) return customers;
+    
+    const query = searchQuery.toLowerCase();
+    return customers.filter(customer => 
+      customer.name.toLowerCase().includes(query) ||
+      customer.phone.toLowerCase().includes(query) ||
+      (customer.email && customer.email.toLowerCase().includes(query)) ||
+      (customer.id_document && customer.id_document.toLowerCase().includes(query))
+    );
+  }, [customers, searchQuery]);
+
   // Calcular páginas
-  const totalPages = Math.ceil(customers.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
   const paginatedCustomers = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     const end = start + itemsPerPage;
-    return customers.slice(start, end);
-  }, [customers, currentPage, itemsPerPage]);
+    return filteredCustomers.slice(start, end);
+  }, [filteredCustomers, currentPage, itemsPerPage]);
 
   // Resetar para primeira página quando a lista mudar
   useEffect(() => {
     if (currentPage > totalPages && totalPages > 0) {
       setCurrentPage(1);
     }
-  }, [customers.length, totalPages, currentPage]);
+  }, [filteredCustomers.length, totalPages, currentPage]);
+
+  // Resetar página quando pesquisa mudar
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -76,7 +96,29 @@ export const CustomerList = ({ customers, loading, onEdit, onRefresh }: Customer
 
   return (
     <>
-      <div className="rounded-lg border bg-card">
+      <div className="mb-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Pesquisar por nome, telefone, email ou documento..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        {searchQuery && (
+          <p className="text-sm text-muted-foreground mt-2">
+            {filteredCustomers.length} {filteredCustomers.length === 1 ? "cliente encontrado" : "clientes encontrados"}
+          </p>
+        )}
+      </div>
+
+      {filteredCustomers.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">
+          Nenhum cliente encontrado com "{searchQuery}"
+        </div>
+      ) : (
+        <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -123,8 +165,9 @@ export const CustomerList = ({ customers, loading, onEdit, onRefresh }: Customer
           </TableBody>
         </Table>
       </div>
+      )}
 
-      {customers.length > itemsPerPage && (
+      {filteredCustomers.length > itemsPerPage && (
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
