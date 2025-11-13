@@ -170,7 +170,7 @@ export const ReservationList = ({ reservations, loading, onEdit, onRefresh }: Re
           Nenhuma reserva encontrada com "{searchQuery}"
         </div>
       ) : (
-        <div className="rounded-lg border bg-card">
+        <div className="rounded-lg border bg-card overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>

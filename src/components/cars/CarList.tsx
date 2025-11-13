@@ -135,7 +135,7 @@ export const CarList = ({ cars, loading, onEdit, onRefresh }: CarListProps) => {
           Nenhum carro encontrado com "{searchQuery}"
         </div>
       ) : (
-        <div className="rounded-lg border bg-card">
+        <div className="rounded-lg border bg-card overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>

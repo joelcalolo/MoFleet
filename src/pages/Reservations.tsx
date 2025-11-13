@@ -188,13 +188,13 @@ const Reservations = () => {
 
   return (
     <Layout>
-      <div className="p-8">
-        <div className="flex justify-between items-center mb-8">
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 sm:mb-8">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Gestão de Reservas</h1>
-            <p className="text-muted-foreground">Crie e gerencie reservas de veículos</p>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2">Gestão de Reservas</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">Crie e gerencie reservas de veículos</p>
           </div>
-          <Button onClick={() => setShowForm(true)}>
+          <Button onClick={() => setShowForm(true)} className="w-full sm:w-auto">
             <Plus className="mr-2 h-4 w-4" />
             Nova Reserva
           </Button>
@@ -216,9 +216,9 @@ const Reservations = () => {
             {/* Calendário */}
             <Card>
               <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Calendário de Reservas</CardTitle>
-                  <div className="flex items-center gap-4">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                  <CardTitle className="text-xl sm:text-2xl">Calendário de Reservas</CardTitle>
+                  <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
                     <Button 
                       variant="outline" 
                       size="icon" 
@@ -226,7 +226,7 @@ const Reservations = () => {
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <span className="text-lg font-semibold min-w-[200px] text-center">
+                    <span className="text-base sm:text-lg font-semibold min-w-[150px] sm:min-w-[200px] text-center">
                       {format(currentDate, "MMMM yyyy", { locale: ptBR })}
                     </span>
                     <Button 
@@ -243,9 +243,9 @@ const Reservations = () => {
                 <div className="space-y-6">
                   {/* Legenda */}
                   {carColorMap.size > 0 && (
-                    <div className="border rounded-lg p-4">
-                      <h3 className="font-semibold mb-3">Legenda de Cores</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <div className="border rounded-lg p-3 sm:p-4">
+                      <h3 className="font-semibold mb-2 sm:mb-3 text-sm sm:text-base">Legenda de Cores</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
                         {Array.from(carColorMap.values()).map((carColor) => (
                           <div key={carColor.carId} className="flex items-center gap-2">
                             <div className={`w-4 h-4 rounded ${carColor.bg} border ${carColor.border}`} />
@@ -257,26 +257,26 @@ const Reservations = () => {
                   )}
 
                   {/* Calendário */}
-                  <div className="overflow-x-auto">
-                    <div className="min-w-[800px]">
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <div className="min-w-[100%] px-4 sm:px-0">
                       {/* Cabeçalho dos dias da semana */}
-                      <div className="grid grid-cols-7 gap-2 mb-2">
+                      <div className="grid grid-cols-7 gap-0.5 mb-1">
                         {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
-                          <div key={day} className="text-center text-sm font-semibold py-2">
+                          <div key={day} className="text-center text-[10px] font-semibold py-1">
                             {day}
                           </div>
                         ))}
                       </div>
 
                       {/* Grid do calendário */}
-                      <div className="grid grid-cols-7 gap-2">
+                      <div className="grid grid-cols-7 gap-0.5">
                         {days.map((day, dayIndex) => {
                           // Se for uma célula vazia (antes do primeiro dia do mês)
                           if (day === null) {
                             return (
                               <div
                                 key={`empty-${dayIndex}`}
-                                className="min-h-[120px] border rounded p-1 bg-muted/30"
+                                className="min-h-[50px] border rounded p-0.5 bg-muted/30"
                               />
                             );
                           }
@@ -289,14 +289,14 @@ const Reservations = () => {
                           return (
                             <div
                               key={day.toISOString()}
-                              className={`min-h-[120px] border rounded p-1 ${
+                              className={`min-h-[50px] border rounded p-0.5 ${
                                 isToday ? "bg-accent/50" : "bg-card"
                               }`}
                             >
-                              <div className="text-xs font-medium mb-1">
+                              <div className="text-[10px] font-medium mb-0.5">
                                 {format(day, "d")}
                               </div>
-                              <div className="space-y-1">
+                              <div className="space-y-0.5">
                                 {dayReservations.map((reservation) => {
                                   const carColor = carColorMap.get(reservation.car_id);
                                   if (!carColor) return null;
@@ -309,26 +309,26 @@ const Reservations = () => {
                                     <Popover key={reservation.id}>
                                       <PopoverTrigger asChild>
                                         <div
-                                          className={`text-xs p-1 cursor-pointer hover:opacity-80 border ${
+                                          className={`text-[9px] p-0.5 cursor-pointer hover:opacity-80 border ${
                                             carColor.light
                                           } ${carColor.border} ${
-                                            isStart ? "rounded-l-md" : ""
-                                          } ${isEnd ? "rounded-r-md" : ""} ${
+                                            isStart ? "rounded-l" : ""
+                                          } ${isEnd ? "rounded-r" : ""} ${
                                             isMiddle ? "rounded-none" : ""
                                           }`}
                                           style={{
-                                            borderLeftWidth: isStart || isFirstDay ? "2px" : "0",
-                                            borderRightWidth: isEnd || isLastDay ? "2px" : "0",
-                                            borderTopWidth: "2px",
-                                            borderBottomWidth: "2px",
+                                            borderLeftWidth: isStart || isFirstDay ? "1px" : "0",
+                                            borderRightWidth: isEnd || isLastDay ? "1px" : "0",
+                                            borderTopWidth: "1px",
+                                            borderBottomWidth: "1px",
                                           }}
                                         >
-                                          <div className="font-medium truncate">
+                                          <div className="font-medium truncate leading-tight">
                                             {reservation.cars
                                               ? `${reservation.cars.brand} ${reservation.cars.model}`
                                               : "N/A"}
                                           </div>
-                                          <div className="text-[10px] text-muted-foreground truncate">
+                                          <div className="text-[7px] text-muted-foreground truncate leading-tight">
                                             {reservation.customers?.name || "N/A"}
                                           </div>
                                         </div>

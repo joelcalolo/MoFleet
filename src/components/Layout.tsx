@@ -3,8 +3,10 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { Car, Calendar, Users, LayoutDashboard, LogOut, UserCircle, Settings, Truck, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import { Car, Calendar, Users, LayoutDashboard, LogOut, UserCircle, Settings, Truck, FileText, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface LayoutProps {
   children: ReactNode;
@@ -15,6 +17,8 @@ const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -59,11 +63,90 @@ const Layout = ({ children }: LayoutProps) => {
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Sidebar Fixo */}
-      <aside className={cn(
-        "fixed left-0 top-0 h-screen bg-card border-r border-border z-50 transition-all duration-300",
-        sidebarWidth
-      )}>
+      {/* Botão Menu Mobile */}
+      {isMobile && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-card border-b border-border p-4 flex items-center justify-between">
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-64 p-0">
+              <div className="h-full flex flex-col">
+                <div className="border-b border-border p-4">
+                  <div className="flex items-center gap-2">
+                    <img src="/logo.png" alt="MoFleet" className="h-8 w-auto" />
+                    <h1 className="text-lg font-bold">MoFleet</h1>
+                  </div>
+                </div>
+                <nav className="flex-1 overflow-y-auto space-y-2 p-4">
+                  {menuItems.map((item) => (
+                    <Button
+                      key={item.path}
+                      variant={location.pathname === item.path ? "secondary" : "ghost"}
+                      className={cn(
+                        "w-full justify-start",
+                        location.pathname === item.path && "bg-secondary"
+                      )}
+                      onClick={() => {
+                        navigate(item.path);
+                        setMobileMenuOpen(false);
+                      }}
+                    >
+                      <item.icon className="h-4 w-4 mr-2" />
+                      {item.label}
+                    </Button>
+                  ))}
+                </nav>
+                <div className="p-4 border-t border-border bg-card">
+                  <div className="mb-2 text-xs text-muted-foreground truncate">
+                    {user.email}
+                  </div>
+                  <div className="space-y-2">
+                    <Button
+                      variant={location.pathname === "/settings" ? "secondary" : "outline"}
+                      className={cn(
+                        "w-full justify-start",
+                        location.pathname === "/settings" && "bg-secondary"
+                      )}
+                      onClick={() => {
+                        navigate("/settings");
+                        setMobileMenuOpen(false);
+                      }}
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Configurações
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => {
+                        handleLogout();
+                        setMobileMenuOpen(false);
+                      }}
+                    >
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Sair
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="MoFleet" className="h-8 w-auto" />
+            <h1 className="text-lg font-bold">MoFleet</h1>
+          </div>
+        </div>
+      )}
+
+      {/* Sidebar Desktop */}
+      {!isMobile && (
+        <aside className={cn(
+          "fixed left-0 top-0 h-screen bg-card border-r border-border z-50 transition-all duration-300",
+          sidebarWidth
+        )}>
         <div className="h-full flex flex-col">
           {/* Header do Sidebar */}
           <div className={cn(
@@ -158,11 +241,12 @@ const Layout = ({ children }: LayoutProps) => {
           </div>
         </div>
       </aside>
+      )}
 
       {/* Conteúdo Principal com margem para o sidebar */}
       <main className={cn(
         "flex-1 overflow-auto transition-all duration-300",
-        sidebarCollapsed ? "ml-16" : "ml-64"
+        isMobile ? "pt-16" : sidebarCollapsed ? "ml-16" : "ml-64"
       )}>
         {children}
       </main>

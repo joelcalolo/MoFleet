@@ -228,12 +228,10 @@ const Fleet = () => {
 
   return (
     <Layout>
-      <div className="p-8">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Gestão de Frota</h1>
-            <p className="text-muted-foreground">Gerencie saídas e retornos de carros</p>
-          </div>
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">Gestão de Frota</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Gerencie saídas e retornos de carros</p>
         </div>
 
         <div className="space-y-6">
@@ -274,7 +272,7 @@ const Fleet = () => {
                       Nenhum carro encontrado com "{searchQueryCarsOut}"
                     </div>
                   ) : (
-                    <div className="rounded-lg border bg-card">
+                    <div className="rounded-lg border bg-card overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -366,7 +364,7 @@ const Fleet = () => {
                       Nenhuma reserva encontrada com "{searchQueryAvailable}"
                     </div>
                   ) : (
-                    <div className="rounded-lg border bg-card">
+                    <div className="rounded-lg border bg-card overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow>

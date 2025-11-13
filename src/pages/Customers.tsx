@@ -59,13 +59,13 @@ const Customers = () => {
 
   return (
     <Layout>
-      <div className="p-8">
-        <div className="flex justify-between items-center mb-8">
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 sm:mb-8">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Gestão de Clientes</h1>
-            <p className="text-muted-foreground">Cadastre e gerencie os clientes</p>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2">Gestão de Clientes</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">Cadastre e gerencie os clientes</p>
           </div>
-          <Button onClick={() => setShowForm(true)}>
+          <Button onClick={() => setShowForm(true)} className="w-full sm:w-auto">
             <Plus className="mr-2 h-4 w-4" />
             Novo Cliente
           </Button>

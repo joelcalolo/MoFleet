@@ -143,13 +143,13 @@ const Settings = () => {
 
   return (
     <Layout>
-      <div className="p-8">
-        <div className="mb-8">
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="mb-6 sm:mb-8">
           <div className="flex items-center gap-2 mb-2">
-            <SettingsIcon className="h-8 w-8" />
-            <h1 className="text-3xl font-bold">Configurações</h1>
+            <SettingsIcon className="h-6 w-6 sm:h-8 sm:w-8" />
+            <h1 className="text-2xl sm:text-3xl font-bold">Configurações</h1>
           </div>
-          <p className="text-muted-foreground">Gerencie as informações da sua empresa</p>
+          <p className="text-sm sm:text-base text-muted-foreground">Gerencie as informações da sua empresa</p>
         </div>
 
         <div className="space-y-6">
@@ -241,14 +241,14 @@ const Settings = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div>
                     <h3 className="font-semibold">Redefinir Senha</h3>
                     <p className="text-sm text-muted-foreground">
                       Receba um email para redefinir sua senha
                     </p>
                   </div>
-                  <Button variant="outline" onClick={handleResetPassword}>
+                  <Button variant="outline" onClick={handleResetPassword} className="w-full sm:w-auto">
                     Redefinir Senha
                   </Button>
                 </div>

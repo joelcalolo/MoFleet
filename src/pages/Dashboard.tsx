@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Car, Calendar, DollarSign, AlertCircle, ChevronLeft, ChevronRight, Bell, Users, CheckCircle, XCircle } from "lucide-react";
+import { Car, Calendar, DollarSign, AlertCircle, ChevronLeft, ChevronRight, Bell, Users, CheckCircle, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
 import { format, eachDayOfInterval, startOfMonth, endOfMonth, addMonths, startOfDay, isSameDay, differenceInDays, getDay } from "date-fns";
@@ -9,6 +9,7 @@ import { ptBR } from "date-fns/locale";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Reservation } from "@/pages/Reservations";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { parseAngolaDate, getAngolaDate, formatAngolaDate, isSameAngolaDay } from "@/lib/dateUtils";
 
 interface Stats {
@@ -53,6 +54,7 @@ const Dashboard = () => {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [reservationsLoading, setReservationsLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [expandedAlerts, setExpandedAlerts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchStats();
@@ -411,14 +413,14 @@ const Dashboard = () => {
 
   return (
     <Layout>
-      <div className="p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
-          <p className="text-muted-foreground">Visão geral do sistema de reservas</p>
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">Dashboard</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Visão geral do sistema de reservas</p>
         </div>
 
         {loading ? (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <Card key={i} className="animate-pulse">
                 <CardHeader className="h-20 bg-muted" />
@@ -427,19 +429,19 @@ const Dashboard = () => {
             ))}
           </div>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
             {statCards.map((stat) => (
               <Card key={stat.title} className={`${stat.bgColor} border-2`}>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                <CardHeader className="flex flex-row items-center justify-between pb-1 p-3">
+                  <CardTitle className="text-xs font-medium text-muted-foreground truncate">
                     {stat.title}
                   </CardTitle>
-                  <stat.icon className={`h-5 w-5 ${stat.color}`} />
+                  <stat.icon className={`h-4 w-4 ${stat.color} flex-shrink-0`} />
                 </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">{stat.value}</div>
+                <CardContent className="p-3 pt-0">
+                  <div className="text-xl sm:text-2xl font-bold">{stat.value}</div>
                   {stat.subtitle && (
-                    <p className="text-xs text-muted-foreground mt-1">{stat.subtitle}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{stat.subtitle}</p>
                   )}
                 </CardContent>
               </Card>
@@ -458,12 +460,12 @@ const Dashboard = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {/* Alertas de Reservas Próximas */}
                   {upcomingReservations.length > 0 && (
                     <div>
-                      <h3 className="font-semibold mb-3 text-sm text-muted-foreground">RESERVAS PRÓXIMAS</h3>
-                      <div className="space-y-3">
+                      <h3 className="font-semibold mb-2 text-xs text-muted-foreground">RESERVAS PRÓXIMAS</h3>
+                      <div className="space-y-2">
                         {upcomingReservations.map((reservation) => {
                           const startDate = parseAngolaDate(reservation.start_date);
                           const endDate = parseAngolaDate(reservation.end_date);
@@ -473,38 +475,68 @@ const Dashboard = () => {
                     const daysUntilEnd = differenceInDays(endDate, today);
                     const isEndingSoon = daysUntilEnd <= 1 && daysUntilEnd >= 0;
                     
+                    const isExpanded = expandedAlerts.has(reservation.id);
+                    
                     return (
-                      <Alert 
-                        key={reservation.id}
-                        variant={isStartingToday ? "destructive" : "default"}
-                      >
-                        <AlertCircle className="h-4 w-4" />
-                        <AlertTitle>
-                          {isStartingToday 
-                            ? "Reserva começa HOJE" 
-                            : isEndingSoon 
-                            ? "Reserva termina em breve"
-                            : `Reserva em ${daysUntil} ${daysUntil === 1 ? "dia" : "dias"}`}
-                        </AlertTitle>
-                        <AlertDescription>
-                          <div className="flex flex-col gap-1">
-                            <span className="font-medium">
-                              {reservation.cars 
-                                ? `${reservation.cars.brand} ${reservation.cars.model}` 
-                                : "Carro N/A"}
-                            </span>
-                            <span className="text-sm">
-                              Cliente: {reservation.customers?.name || "N/A"}
-                            </span>
-                            <span className="text-sm">
-                              Período: {formatAngolaDate(reservation.start_date)} - {formatAngolaDate(reservation.end_date)}
-                            </span>
-                            <span className="text-sm font-semibold">
-                              Total: {reservation.total_amount.toFixed(2)} AKZ
-                            </span>
-                          </div>
-                        </AlertDescription>
-                      </Alert>
+                      <Collapsible key={reservation.id} open={isExpanded} onOpenChange={(open) => {
+                        const newSet = new Set(expandedAlerts);
+                        if (open) {
+                          newSet.add(reservation.id);
+                        } else {
+                          newSet.delete(reservation.id);
+                        }
+                        setExpandedAlerts(newSet);
+                      }}>
+                        <Alert 
+                          variant={isStartingToday ? "destructive" : "default"}
+                          className="cursor-pointer"
+                        >
+                          <CollapsibleTrigger asChild>
+                            <div className="flex items-center justify-between w-full">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                                <AlertTitle className="text-sm truncate">
+                                  {isStartingToday 
+                                    ? "Reserva começa HOJE" 
+                                    : isEndingSoon 
+                                    ? "Reserva termina em breve"
+                                    : `Reserva em ${daysUntil} ${daysUntil === 1 ? "dia" : "dias"}`}
+                                </AlertTitle>
+                                <span className="text-xs text-muted-foreground truncate ml-2">
+                                  - {reservation.cars 
+                                    ? `${reservation.cars.brand} ${reservation.cars.model}` 
+                                    : "Carro N/A"}
+                                </span>
+                              </div>
+                              {isExpanded ? (
+                                <ChevronUp className="h-4 w-4 flex-shrink-0 ml-2" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 flex-shrink-0 ml-2" />
+                              )}
+                            </div>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <AlertDescription className="mt-2 pt-2 border-t">
+                              <div className="flex flex-col gap-1 text-sm">
+                                <span className="font-medium">
+                                  {reservation.cars 
+                                    ? `${reservation.cars.brand} ${reservation.cars.model}` 
+                                    : "Carro N/A"}
+                                </span>
+                                <span>
+                                  Cliente: {reservation.customers?.name || "N/A"}
+                                </span>
+                                <span>
+                                  Período: {formatAngolaDate(reservation.start_date)} - {formatAngolaDate(reservation.end_date)}
+                                </span>
+                                <span className="font-semibold">
+                                  Total: {reservation.total_amount.toFixed(2)} AKZ
+                                </span>
+                              </div>
+                            </AlertDescription>
+                          </CollapsibleContent>
+                        </Alert>
+                      </Collapsible>
                     );
                   })}
                     </div>
@@ -514,44 +546,74 @@ const Dashboard = () => {
                   {/* Alertas de Carros Prestes a Retornar */}
                   {upcomingReturns.length > 0 && (
                     <div>
-                      <h3 className="font-semibold mb-3 text-sm text-muted-foreground">CARROS PRESTES A RETORNAR</h3>
-                      <div className="space-y-3">
+                      <h3 className="font-semibold mb-2 text-xs text-muted-foreground">CARROS PRESTES A RETORNAR</h3>
+                      <div className="space-y-2">
                         {upcomingReturns.map(({ reservation, endDate, daysUntil }) => {
                           const isReturningToday = daysUntil === 0;
                           const isReturningTomorrow = daysUntil === 1;
                           
+                          const isExpanded = expandedAlerts.has(`return-${reservation.id}`);
+                          
                           return (
-                            <Alert 
-                              key={reservation.id}
-                              variant={isReturningToday ? "destructive" : "default"}
-                            >
-                              <AlertCircle className="h-4 w-4" />
-                              <AlertTitle>
-                                {isReturningToday 
-                                  ? "Carro retorna HOJE" 
-                                  : isReturningTomorrow
-                                  ? "Carro retorna AMANHÃ"
-                                  : `Carro retorna em ${daysUntil} ${daysUntil === 1 ? "dia" : "dias"}`}
-                              </AlertTitle>
-                              <AlertDescription>
-                                <div className="flex flex-col gap-1">
-                                  <span className="font-medium">
-                                    {reservation.cars 
-                                      ? `${reservation.cars.brand} ${reservation.cars.model}` 
-                                      : "Carro N/A"}
-                                  </span>
-                                  <span className="text-sm">
-                                    Cliente: {reservation.customers?.name || "N/A"}
-                                  </span>
-                                  <span className="text-sm">
-                                    Data de retorno: {formatAngolaDate(reservation.end_date)}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground">
-                                    Carro está fora desde o checkout
-                                  </span>
-                                </div>
-                              </AlertDescription>
-                            </Alert>
+                            <Collapsible key={reservation.id} open={isExpanded} onOpenChange={(open) => {
+                              const newSet = new Set(expandedAlerts);
+                              if (open) {
+                                newSet.add(`return-${reservation.id}`);
+                              } else {
+                                newSet.delete(`return-${reservation.id}`);
+                              }
+                              setExpandedAlerts(newSet);
+                            }}>
+                              <Alert 
+                                variant={isReturningToday ? "destructive" : "default"}
+                                className="cursor-pointer"
+                              >
+                                <CollapsibleTrigger asChild>
+                                  <div className="flex items-center justify-between w-full">
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                                      <AlertTitle className="text-sm truncate">
+                                        {isReturningToday 
+                                          ? "Carro retorna HOJE" 
+                                          : isReturningTomorrow
+                                          ? "Carro retorna AMANHÃ"
+                                          : `Carro retorna em ${daysUntil} ${daysUntil === 1 ? "dia" : "dias"}`}
+                                      </AlertTitle>
+                                      <span className="text-xs text-muted-foreground truncate ml-2">
+                                        - {reservation.cars 
+                                          ? `${reservation.cars.brand} ${reservation.cars.model}` 
+                                          : "Carro N/A"}
+                                      </span>
+                                    </div>
+                                    {isExpanded ? (
+                                      <ChevronUp className="h-4 w-4 flex-shrink-0 ml-2" />
+                                    ) : (
+                                      <ChevronDown className="h-4 w-4 flex-shrink-0 ml-2" />
+                                    )}
+                                  </div>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent>
+                                  <AlertDescription className="mt-2 pt-2 border-t">
+                                    <div className="flex flex-col gap-1 text-sm">
+                                      <span className="font-medium">
+                                        {reservation.cars 
+                                          ? `${reservation.cars.brand} ${reservation.cars.model}` 
+                                          : "Carro N/A"}
+                                      </span>
+                                      <span>
+                                        Cliente: {reservation.customers?.name || "N/A"}
+                                      </span>
+                                      <span>
+                                        Data de retorno: {formatAngolaDate(reservation.end_date)}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        Carro está fora desde o checkout
+                                      </span>
+                                    </div>
+                                  </AlertDescription>
+                                </CollapsibleContent>
+                              </Alert>
+                            </Collapsible>
                           );
                         })}
                       </div>
@@ -567,9 +629,9 @@ const Dashboard = () => {
         <div className="mt-8">
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle>Calendário de Reservas</CardTitle>
-                <div className="flex items-center gap-4">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                <CardTitle className="text-xl sm:text-2xl">Calendário de Reservas</CardTitle>
+                <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
                   <Button 
                     variant="outline" 
                     size="icon" 
@@ -577,7 +639,7 @@ const Dashboard = () => {
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <span className="text-lg font-semibold min-w-[200px] text-center">
+                  <span className="text-base sm:text-lg font-semibold min-w-[150px] sm:min-w-[200px] text-center">
                     {format(currentDate, "MMMM yyyy", { locale: ptBR })}
                   </span>
                   <Button 
@@ -597,9 +659,9 @@ const Dashboard = () => {
                 <div className="space-y-6">
                   {/* Legenda */}
                   {carColorMap.size > 0 && (
-                    <div className="border rounded-lg p-4">
-                      <h3 className="font-semibold mb-3">Legenda de Cores</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <div className="border rounded-lg p-3">
+                      <h3 className="font-semibold mb-2 text-sm">Legenda de Cores</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                         {Array.from(carColorMap.values()).map((carColor) => (
                           <div key={carColor.carId} className="flex items-center gap-2">
                             <div className={`w-4 h-4 rounded ${carColor.bg} border ${carColor.border}`} />
@@ -611,26 +673,26 @@ const Dashboard = () => {
                   )}
 
                   {/* Calendário */}
-                  <div className="overflow-x-auto">
-                    <div className="min-w-[800px]">
+                  <div className="overflow-x-auto -mx-4 sm:mx-0">
+                    <div className="min-w-[100%] px-4 sm:px-0">
                       {/* Cabeçalho dos dias da semana */}
-                      <div className="grid grid-cols-7 gap-2 mb-2">
+                      <div className="grid grid-cols-7 gap-0.5 mb-1">
                         {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
-                          <div key={day} className="text-center text-sm font-semibold py-2">
+                          <div key={day} className="text-center text-[10px] font-semibold py-1">
                             {day}
                           </div>
                         ))}
                       </div>
 
                       {/* Grid do calendário */}
-                      <div className="grid grid-cols-7 gap-2">
+                      <div className="grid grid-cols-7 gap-0.5">
                         {days.map((day, dayIndex) => {
                           // Se for uma célula vazia (antes do primeiro dia do mês)
                           if (day === null) {
                             return (
                               <div
                                 key={`empty-${dayIndex}`}
-                                className="min-h-[120px] border rounded p-1 bg-muted/30"
+                                className="min-h-[50px] border rounded p-0.5 bg-muted/30"
                               />
                             );
                           }
@@ -643,14 +705,14 @@ const Dashboard = () => {
                           return (
                             <div
                               key={day.toISOString()}
-                              className={`min-h-[120px] border rounded p-1 ${
+                              className={`min-h-[50px] border rounded p-0.5 ${
                                 isToday ? "bg-accent/50" : "bg-card"
                               }`}
                             >
-                              <div className="text-xs font-medium mb-1">
+                              <div className="text-[10px] font-medium mb-0.5">
                                 {format(day, "d")}
                               </div>
-                              <div className="space-y-1">
+                              <div className="space-y-0.5">
                                 {dayReservations.map((reservation) => {
                                   const carColor = carColorMap.get(reservation.car_id);
                                   if (!carColor) return null;
@@ -663,26 +725,26 @@ const Dashboard = () => {
                                     <Popover key={reservation.id}>
                                       <PopoverTrigger asChild>
                                         <div
-                                          className={`text-xs p-1 cursor-pointer hover:opacity-80 border ${
+                                          className={`text-[9px] p-0.5 cursor-pointer hover:opacity-80 border ${
                                             carColor.light
                                           } ${carColor.border} ${
-                                            isStart ? "rounded-l-md" : ""
-                                          } ${isEnd ? "rounded-r-md" : ""} ${
+                                            isStart ? "rounded-l" : ""
+                                          } ${isEnd ? "rounded-r" : ""} ${
                                             isMiddle ? "rounded-none" : ""
                                           }`}
                                           style={{
-                                            borderLeftWidth: isStart || isFirstDay ? "2px" : "0",
-                                            borderRightWidth: isEnd || isLastDay ? "2px" : "0",
-                                            borderTopWidth: "2px",
-                                            borderBottomWidth: "2px",
+                                            borderLeftWidth: isStart || isFirstDay ? "1px" : "0",
+                                            borderRightWidth: isEnd || isLastDay ? "1px" : "0",
+                                            borderTopWidth: "1px",
+                                            borderBottomWidth: "1px",
                                           }}
                                         >
-                                          <div className="font-medium truncate">
+                                          <div className="font-medium truncate leading-tight">
                                             {reservation.cars
                                               ? `${reservation.cars.brand} ${reservation.cars.model}`
                                               : "N/A"}
                                           </div>
-                                          <div className="text-[10px] text-muted-foreground truncate">
+                                          <div className="text-[7px] text-muted-foreground truncate leading-tight">
                                             {reservation.customers?.name || "N/A"}
                                           </div>
                                         </div>

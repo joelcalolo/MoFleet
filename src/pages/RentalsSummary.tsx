@@ -3,10 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, FileDown, Filter } from "lucide-react";
+import { FileText, Download, FileDown, Filter, ChevronDown, ChevronUp } from "lucide-react";
 import Layout from "@/components/Layout";
-import { formatAngolaDate } from "@/lib/dateUtils";
-import { format } from "date-fns";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Pagination } from "@/components/ui/pagination";
+import { formatAngolaDate } from "@/lib/dateUtils";
+import { format } from "date-fns";
 
 interface RentalSummary {
   id: string;
@@ -54,6 +55,7 @@ const RentalsSummary = () => {
   const [filteredRentals, setFilteredRentals] = useState<RentalSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const itemsPerPage = 10;
   const [filters, setFilters] = useState({
     status: "all",
@@ -425,33 +427,44 @@ const RentalsSummary = () => {
 
   return (
     <Layout>
-      <div className="p-8">
-        <div className="flex justify-between items-center mb-8">
+      <div className="p-4 sm:p-6 lg:p-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 sm:mb-8">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Resumo de Alugueres</h1>
-            <p className="text-muted-foreground">Histórico completo de saídas e retornos de carros</p>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-2">Resumo de Alugueres</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">Histórico completo de saídas e retornos de carros</p>
           </div>
           <div className="flex gap-2">
-            <Button onClick={exportToCSV} variant="outline">
-              <Download className="mr-2 h-4 w-4" />
-              Exportar CSV
+            <Button onClick={exportToCSV} variant="outline" size="sm">
+              <Download className="mr-2 h-3 w-3" />
+              CSV
             </Button>
-            <Button onClick={exportToPDF} variant="outline">
-              <FileDown className="mr-2 h-4 w-4" />
-              Exportar PDF
+            <Button onClick={exportToPDF} variant="outline" size="sm">
+              <FileDown className="mr-2 h-3 w-3" />
+              PDF
             </Button>
           </div>
         </div>
 
         {/* Filtros */}
         <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="h-5 w-5" />
-              Filtros
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+          <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+            <CardHeader>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
+                  <CardTitle className="flex items-center gap-2">
+                    <Filter className="h-5 w-5" />
+                    Filtros
+                  </CardTitle>
+                  {filtersOpen ? (
+                    <ChevronUp className="h-5 w-5" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+            </CardHeader>
+            <CollapsibleContent>
+              <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>
@@ -523,7 +536,9 @@ const RentalsSummary = () => {
                 Limpar Filtros
               </Button>
             </div>
-          </CardContent>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
         </Card>
 
         <Card>
@@ -539,7 +554,7 @@ const RentalsSummary = () => {
                 Nenhum aluguer registrado ainda
               </div>
             ) : (
-              <div className="rounded-lg border bg-card overflow-x-auto">
+              <div className="rounded-lg border bg-card overflow-x-auto -mx-4 sm:mx-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
