@@ -5,8 +5,7 @@ const urlsToCache = [
   '/dashboard',
   '/auth',
   '/manifest.json',
-  '/icon-192x192.png',
-  '/icon-512x512.png'
+  '/logo.png'
 ];
 
 // Instalar Service Worker
@@ -48,6 +47,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Ignorar requisições não-HTTP(S) (chrome-extension:, file:, etc.)
+  if (!event.request.url.startsWith('http')) {
+    return;
+  }
+
   // Ignorar requisições para APIs externas
   if (event.request.url.includes('supabase.co')) {
     return;
@@ -71,10 +75,15 @@ self.addEventListener('fetch', (event) => {
           // Clonar resposta
           const responseToCache = response.clone();
 
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
+          // Verificar se a requisição é cacheável (apenas HTTP/HTTPS)
+          if (event.request.url.startsWith('http')) {
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                cache.put(event.request, responseToCache).catch((error) => {
+                  console.warn('Erro ao fazer cache:', error);
+                });
+              });
+          }
 
           return response;
         });
@@ -92,8 +101,8 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('push', (event) => {
   const options = {
     body: event.data ? event.data.text() : 'Nova notificação',
-    icon: '/icon-192x192.png',
-    badge: '/icon-192x192.png',
+    icon: '/logo.png',
+    badge: '/logo.png',
     vibrate: [200, 100, 200],
     tag: 'rentacar-notification'
   };
