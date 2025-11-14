@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, FileDown, Filter, ChevronDown, ChevronUp } from "lucide-react";
+import { FileText, Download, FileDown, Filter, ChevronDown, ChevronUp, Search } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Pagination } from "@/components/ui/pagination";
-import { formatAngolaDate } from "@/lib/dateUtils";
+import { formatAngolaDate, parseAngolaDate, calculateExtraDays } from "@/lib/dateUtils";
 import { format } from "date-fns";
 
 interface RentalSummary {
@@ -24,6 +24,7 @@ interface RentalSummary {
   initial_km: number;
   final_km: number | null;
   delivered_by: string;
+  driver_name: string | null;
   received_by: string | null;
   deposit_returned: boolean;
   deposit_returned_amount: number;
@@ -64,6 +65,7 @@ const RentalsSummary = () => {
     carSearch: "",
     customerSearch: "",
   });
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Calcular páginas para os alugueres filtrados
   const totalPages = Math.ceil(filteredRentals.length / itemsPerPage);
@@ -76,7 +78,7 @@ const RentalsSummary = () => {
   // Resetar para primeira página quando os filtros mudarem
   useEffect(() => {
     setCurrentPage(1);
-  }, [filters.status, filters.startDate, filters.endDate, filters.carSearch, filters.customerSearch]);
+  }, [filters.status, filters.startDate, filters.endDate, filters.carSearch, filters.customerSearch, searchQuery]);
 
   useEffect(() => {
     fetchRentals();
@@ -95,7 +97,9 @@ const RentalsSummary = () => {
             end_date,
             total_amount,
             status,
-            cars (brand, model, license_plate),
+            location_type,
+            with_driver,
+            cars (brand, model, license_plate, price_city_with_driver, price_city_without_driver, price_outside_with_driver, price_outside_without_driver, daily_km_limit, extra_km_price),
             customers (name, phone)
           )
         `)
@@ -121,6 +125,7 @@ const RentalsSummary = () => {
           initial_km: checkout.initial_km,
           final_km: checkin?.final_km || null,
           delivered_by: checkout.delivered_by || "N/A",
+          driver_name: checkout.driver_name || null,
           received_by: checkin?.received_by || null,
           deposit_returned: checkin?.deposit_returned || false,
           deposit_returned_amount: checkin?.deposit_returned_amount || 0,
@@ -186,8 +191,56 @@ const RentalsSummary = () => {
       });
     }
 
+    // Filtro de pesquisa geral (busca em todos os campos)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(rental => {
+        // Carro (marca, modelo, matrícula)
+        const carInfo = rental.reservation.cars 
+          ? `${rental.reservation.cars.brand} ${rental.reservation.cars.model} ${rental.reservation.cars.license_plate}`.toLowerCase()
+          : "";
+        
+        // Cliente (nome, telefone)
+        const customerInfo = rental.reservation.customers
+          ? `${rental.reservation.customers.name} ${rental.reservation.customers.phone || ""}`.toLowerCase()
+          : "";
+        
+        // Período (datas formatadas)
+        const period = `${formatAngolaDate(rental.reservation.start_date)} ${formatAngolaDate(rental.reservation.end_date)}`.toLowerCase();
+        
+        // Datas de checkout e checkin
+        const checkoutDate = rental.checkout_date ? formatAngolaDate(rental.checkout_date).toLowerCase() : "";
+        const checkinDate = rental.checkin_date ? formatAngolaDate(rental.checkin_date).toLowerCase() : "";
+        
+        // Entregado por / Recebido por
+        const deliveredBy = (rental.delivered_by || "").toLowerCase();
+        const receivedBy = (rental.received_by || "").toLowerCase();
+        
+        // KM inicial e final
+        const kmInfo = `${rental.initial_km} ${rental.final_km || ""}`.toLowerCase();
+        
+        // Status
+        const status = rental.checkin_date ? "completo" : "em andamento";
+        
+        // Observações
+        const notes = `${rental.checkout_notes || ""} ${rental.checkin_notes || ""}`.toLowerCase();
+        
+        // Verificar se a query está em algum dos campos
+        return carInfo.includes(query) ||
+          customerInfo.includes(query) ||
+          period.includes(query) ||
+          checkoutDate.includes(query) ||
+          checkinDate.includes(query) ||
+          deliveredBy.includes(query) ||
+          receivedBy.includes(query) ||
+          kmInfo.includes(query) ||
+          status.includes(query) ||
+          notes.includes(query);
+      });
+    }
+
     setFilteredRentals(filtered);
-  }, [filters, rentals]);
+  }, [filters, rentals, searchQuery]);
 
   const calculateKmDifference = (initial: number, final: number | null): number | null => {
     if (final === null) return null;
@@ -445,6 +498,26 @@ const RentalsSummary = () => {
           </div>
         </div>
 
+        {/* Barra de Pesquisa Geral */}
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Pesquisar por carro, cliente, período, entregado por, recebido por, KM, status..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            {searchQuery && (
+              <p className="text-sm text-muted-foreground mt-2">
+                {filteredRentals.length} {filteredRentals.length === 1 ? "aluguer encontrado" : "alugueres encontrados"}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Filtros */}
         <Card className="mb-6">
           <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
@@ -578,6 +651,15 @@ const RentalsSummary = () => {
                       {paginatedRentals.map((rental) => {
                       const kmDifference = calculateKmDifference(rental.initial_km, rental.final_km);
                       const isCompleted = rental.checkin_date !== null;
+                      
+                      // Calcular dias extras
+                      let extraDays = 0;
+                      if (rental.checkout_date && rental.checkin_date) {
+                        const start = parseAngolaDate(rental.reservation.start_date);
+                        const end = parseAngolaDate(rental.reservation.end_date);
+                        const expectedDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                        extraDays = calculateExtraDays(rental.checkout_date, rental.checkin_date, expectedDays);
+                      }
 
                       return (
                         <TableRow 
@@ -648,9 +730,26 @@ const RentalsSummary = () => {
                               : <span className="text-muted-foreground">-</span>}
                           </TableCell>
                           <TableCell>
-                            {rental.extra_fees_amount > 0
-                              ? `${rental.extra_fees_amount.toFixed(2)} AKZ`
-                              : <span className="text-muted-foreground">-</span>}
+                            {rental.extra_fees_amount > 0 ? (
+                              <div>
+                                <div className="font-semibold">
+                                  {rental.extra_fees_amount.toFixed(2)} AKZ
+                                </div>
+                                {extraDays > 0 && (
+                                  <div className="text-xs text-yellow-600 font-medium">
+                                    ({extraDays} dia{extraDays > 1 ? 's' : ''} extra{extraDays > 1 ? 's' : ''})
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              extraDays > 0 ? (
+                                <div className="text-xs text-yellow-600 font-medium">
+                                  {extraDays} dia{extraDays > 1 ? 's' : ''} extra{extraDays > 1 ? 's' : ''}
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge

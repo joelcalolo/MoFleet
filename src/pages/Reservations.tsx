@@ -25,7 +25,17 @@ export interface Reservation {
   deposit_paid: boolean;
   notes?: string;
   created_by?: string;
-  cars?: { brand: string; model: string; license_plate: string };
+  cars?: { 
+    brand: string; 
+    model: string; 
+    license_plate: string;
+    price_city_with_driver?: number;
+    price_city_without_driver?: number;
+    price_outside_with_driver?: number;
+    price_outside_without_driver?: number;
+    daily_km_limit?: number;
+    extra_km_price?: number;
+  };
   customers?: { name: string; phone: string };
 }
 

@@ -24,6 +24,8 @@ export interface Car {
   delivery_fee: number;
   pickup_fee: number;
   deposit_amount: number;
+  daily_km_limit?: number;
+  extra_km_price?: number;
   notes?: string;
   is_available: boolean;
 }

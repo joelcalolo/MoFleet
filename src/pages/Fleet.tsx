@@ -109,7 +109,7 @@ const Fleet = () => {
             deposit_paid,
             notes,
             created_by,
-            cars (brand, model, license_plate),
+            cars (brand, model, license_plate, price_city_with_driver, price_city_without_driver, price_outside_with_driver, price_outside_without_driver, daily_km_limit, extra_km_price),
             customers (name, phone)
           )
         `)
@@ -164,7 +164,7 @@ const Fleet = () => {
         .from("reservations")
         .select(`
           *,
-          cars (brand, model, license_plate),
+          cars (brand, model, license_plate, daily_km_limit, extra_km_price),
           customers (name, phone)
         `)
         .in("status", ["confirmed", "pending"])

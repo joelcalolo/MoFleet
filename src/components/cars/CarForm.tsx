@@ -35,6 +35,8 @@ export const CarForm = ({ car, onClose }: CarFormProps) => {
     delivery_fee: car?.delivery_fee || 0,
     pickup_fee: car?.pickup_fee || 0,
     deposit_amount: car?.deposit_amount || 0,
+    daily_km_limit: car?.daily_km_limit || 200,
+    extra_km_price: car?.extra_km_price || 0,
     notes: car?.notes || "",
     is_available: car?.is_available ?? true,
   });
@@ -278,6 +280,42 @@ export const CarForm = ({ car, onClose }: CarFormProps) => {
               onChange={(e) => setFormData({ ...formData, deposit_amount: parseFloat(e.target.value) })}
               required
             />
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t pt-6">
+        <h3 className="text-lg font-semibold mb-4">Controle de Quilometragem</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="daily_km_limit">Plafond Diário de KM *</Label>
+            <Input
+              id="daily_km_limit"
+              type="number"
+              min="0"
+              value={formData.daily_km_limit}
+              onChange={(e) => setFormData({ ...formData, daily_km_limit: parseInt(e.target.value) || 0 })}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Quilometragem máxima permitida por dia de aluguel
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="extra_km_price">Preço por KM Extra (AKZ) *</Label>
+            <Input
+              id="extra_km_price"
+              type="number"
+              step="0.01"
+              min="0"
+              value={formData.extra_km_price}
+              onChange={(e) => setFormData({ ...formData, extra_km_price: parseFloat(e.target.value) || 0 })}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Valor cobrado por cada km que exceder o plafond diário
+            </p>
           </div>
         </div>
       </div>

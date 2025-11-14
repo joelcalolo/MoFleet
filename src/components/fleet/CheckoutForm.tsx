@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Reservation } from "@/pages/Reservations";
 import { useCompany } from "@/hooks/useCompany";
-import { formatAngolaDate } from "@/lib/dateUtils";
+import { formatAngolaDate, formatDateTimeLocal, parseDateTimeLocal } from "@/lib/dateUtils";
 import { handleError, logError } from "@/lib/errorHandler";
 
 interface CheckoutFormProps {
@@ -20,9 +20,14 @@ interface CheckoutFormProps {
 export const CheckoutForm = ({ reservation, onClose, onSuccess }: CheckoutFormProps) => {
   const [loading, setLoading] = useState(false);
   const { companyId } = useCompany();
+  
+  // Inicializar com data/hora atual
+  const now = new Date();
   const [formData, setFormData] = useState({
+    checkout_datetime: formatDateTimeLocal(now), // Campo de data/hora
     initial_km: "",
     delivered_by: "",
+    driver_name: "",
     notes: "",
   });
 
@@ -34,6 +39,12 @@ export const CheckoutForm = ({ reservation, onClose, onSuccess }: CheckoutFormPr
       return;
     }
 
+    // Validar nome do motorista se a reserva for com motorista
+    if (reservation.with_driver && !formData.driver_name.trim()) {
+      toast.error("Por favor, informe o nome do motorista");
+      return;
+    }
+
     if (!companyId) {
       toast.error("Erro: Empresa não encontrada");
       return;
@@ -42,13 +53,22 @@ export const CheckoutForm = ({ reservation, onClose, onSuccess }: CheckoutFormPr
     setLoading(true);
 
     try {
-      // Criar checkout
+      // Converter a data/hora informada para ISO string
+      const checkoutDateTime = parseDateTimeLocal(formData.checkout_datetime);
+
+      // Criar checkout com a data/hora informada
       const checkoutData: any = {
         reservation_id: reservation.id,
+        checkout_date: checkoutDateTime.toISOString(), // Usar a data/hora informada
         initial_km: parseInt(formData.initial_km),
         delivered_by: formData.delivered_by,
         notes: formData.notes || null,
       };
+
+      // Adicionar nome do motorista se a reserva for com motorista
+      if (reservation.with_driver && formData.driver_name) {
+        checkoutData.driver_name = formData.driver_name;
+      }
 
       // Adicionar company_id se disponível (após migration)
       // Se não tiver company_id, a política RLS verificará através da reserva
@@ -130,6 +150,21 @@ export const CheckoutForm = ({ reservation, onClose, onSuccess }: CheckoutFormPr
       </div>
 
       <div className="space-y-2">
+        <Label htmlFor="checkout_datetime">Data e Hora da Saída *</Label>
+        <Input
+          id="checkout_datetime"
+          type="datetime-local"
+          value={formData.checkout_datetime}
+          onChange={(e) => setFormData({ ...formData, checkout_datetime: e.target.value })}
+          required
+          disabled={loading}
+        />
+        <p className="text-xs text-muted-foreground">
+          Informe a data e hora real em que o carro foi entregue
+        </p>
+      </div>
+
+      <div className="space-y-2">
         <Label htmlFor="initial_km">Quilometragem Inicial *</Label>
         <Input
           id="initial_km"
@@ -154,6 +189,21 @@ export const CheckoutForm = ({ reservation, onClose, onSuccess }: CheckoutFormPr
           disabled={loading}
         />
       </div>
+
+      {reservation.with_driver && (
+        <div className="space-y-2">
+          <Label htmlFor="driver_name">Nome do Motorista *</Label>
+          <Input
+            id="driver_name"
+            type="text"
+            placeholder="Nome do motorista"
+            value={formData.driver_name}
+            onChange={(e) => setFormData({ ...formData, driver_name: e.target.value })}
+            required
+            disabled={loading}
+          />
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="notes">Observações</Label>

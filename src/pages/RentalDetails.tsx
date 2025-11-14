@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileDown } from "lucide-react";
 import Layout from "@/components/Layout";
-import { formatAngolaDate } from "@/lib/dateUtils";
+import { formatAngolaDate, parseAngolaDate, calculateExtraDays, getExpectedReturnDateTime } from "@/lib/dateUtils";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +45,10 @@ interface RentalDetails {
       brand: string;
       model: string;
       license_plate: string;
+      price_city_with_driver?: number;
+      price_city_without_driver?: number;
+      price_outside_with_driver?: number;
+      price_outside_without_driver?: number;
     };
     customers: {
       name: string;
@@ -91,7 +95,7 @@ const RentalDetails = () => {
         .from("reservations")
         .select(`
           *,
-          cars (brand, model, license_plate),
+          cars (brand, model, license_plate, price_city_with_driver, price_city_without_driver, price_outside_with_driver, price_outside_without_driver, daily_km_limit, extra_km_price),
           customers (name, phone, email)
         `)
         .eq("id", reservationId)
@@ -283,6 +287,12 @@ const RentalDetails = () => {
                   <span class="info-label">Entregado Por</span>
                   <span class="info-value">${rental.checkout.delivered_by}</span>
                 </div>
+                ${rental.reservation.with_driver && rental.checkout.driver_name ? `
+                <div class="info-item">
+                  <span class="info-label">Motorista</span>
+                  <span class="info-value">${rental.checkout.driver_name}</span>
+                </div>
+                ` : ""}
               </div>
               ${rental.checkout.notes ? `<div class="notes"><strong>Observações:</strong> ${rental.checkout.notes}</div>` : ""}
             </div>
@@ -481,6 +491,12 @@ const RentalDetails = () => {
                   <Label className="text-sm text-muted-foreground">Entregado Por</Label>
                   <p className="font-semibold">{rental.checkout.delivered_by}</p>
                 </div>
+                {rental.reservation.with_driver && rental.checkout.driver_name && (
+                  <div>
+                    <Label className="text-sm text-muted-foreground">Motorista</Label>
+                    <p className="font-semibold">{rental.checkout.driver_name}</p>
+                  </div>
+                )}
               </div>
               {rental.checkout.notes && (
                 <div className="mt-4 p-4 bg-muted rounded-lg">
@@ -492,14 +508,73 @@ const RentalDetails = () => {
           </Card>
 
           {/* Retorno do Veículo */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Retorno do Veículo (Checkin)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {rental.checkin ? (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {rental.checkin ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Retorno do Veículo (Checkin)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  // Calcular dias extras
+                  const start = parseAngolaDate(rental.reservation.start_date);
+                  const end = parseAngolaDate(rental.reservation.end_date);
+                  const expectedDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+                  const extraDays = calculateExtraDays(rental.checkout.checkout_date, rental.checkin.checkin_date, expectedDays);
+                  const expectedReturn = getExpectedReturnDateTime(rental.checkout.checkout_date, expectedDays);
+                  
+                  // Calcular valor dos dias extras
+                  let extraDaysAmount = 0;
+                  const car = rental.reservation.cars;
+                  if (car && extraDays > 0) {
+                    let dailyRate = 0;
+                    if (rental.reservation.location_type === "city") {
+                      dailyRate = rental.reservation.with_driver 
+                        ? (car.price_city_with_driver || 0)
+                        : (car.price_city_without_driver || 0);
+                    } else {
+                      dailyRate = rental.reservation.with_driver 
+                        ? (car.price_outside_with_driver || 0)
+                        : (car.price_outside_without_driver || 0);
+                    }
+                    extraDaysAmount = dailyRate * extraDays;
+                  }
+                  
+                  return (
+                    <>
+                      {extraDays > 0 && (
+                        <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-lg">⚠️</span>
+                            <Label className="text-sm font-semibold text-yellow-800">
+                              Retorno após o horário previsto
+                            </Label>
+                          </div>
+                          <div className="space-y-1 text-sm">
+                            <div>
+                              <span className="text-yellow-700 font-medium">Retorno esperado: </span>
+                              <span className="text-yellow-800">{format(expectedReturn, "dd/MM/yyyy HH:mm")}</span>
+                            </div>
+                            <div>
+                              <span className="text-yellow-700 font-medium">Retorno real: </span>
+                              <span className="text-yellow-800">{format(new Date(rental.checkin.checkin_date), "dd/MM/yyyy HH:mm")}</span>
+                            </div>
+                            <div>
+                              <span className="text-yellow-700 font-medium">Dias extras: </span>
+                              <span className="text-yellow-800 font-semibold">{extraDays} dia{extraDays > 1 ? 's' : ''}</span>
+                            </div>
+                            {extraDaysAmount > 0 && (
+                              <div>
+                                <span className="text-yellow-700 font-medium">Valor adicional: </span>
+                                <span className="text-yellow-800 font-semibold">{extraDaysAmount.toFixed(2)} AKZ</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <Label className="text-sm text-muted-foreground">Data de Retorno</Label>
                       <p className="font-semibold">{formatAngolaDate(rental.checkin.checkin_date)}</p>
@@ -543,14 +618,20 @@ const RentalDetails = () => {
                       <p className="mt-1">{rental.checkin.notes}</p>
                     </div>
                   )}
-                </>
-              ) : (
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Retorno do Veículo (Checkin)</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="text-center py-8">
                   <p className="text-muted-foreground">Aguardando retorno do veículo</p>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </Layout>
