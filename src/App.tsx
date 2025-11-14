@@ -18,6 +18,7 @@ import RentalDetails from "./pages/RentalDetails";
 import ReservationDetails from "./pages/ReservationDetails";
 import Settings from "./pages/Settings";
 import CompanyUsers from "./pages/CompanyUsers";
+import Welcome from "./pages/Welcome";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
@@ -46,6 +47,7 @@ const App = () => (
           <Route path="/reservation/:id" element={<ReservationDetails />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/company-users" element={<CompanyUsers />} />
+          <Route path="/welcome" element={<Welcome />} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

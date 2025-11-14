@@ -35,6 +35,11 @@ const Auth = () => {
     const detected = getSubdomainFromHost();
     if (detected) {
       setSubdomain(detected);
+      // Se estiver em um subdomain, mostrar apenas login de company user
+      setIsCompanyUserLogin(true);
+    } else {
+      // Se estiver no domínio principal, não permitir login de company user
+      setIsCompanyUserLogin(false);
     }
 
     // Verificar se está no modo de redefinição de senha
@@ -212,7 +217,29 @@ const Auth = () => {
 
         if (error) throw error;
         
-        // Redirecionar para página de confirmação
+        // Aguardar um pouco para o trigger processar
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Aguardar mais um pouco para garantir que o trigger processou
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Verificar se tem credenciais para mostrar na página de boas-vindas
+        const { data: { user: newUser } } = await supabase.auth.getUser();
+        if (newUser) {
+          const { data: credentialsData } = await supabase
+            .from("company_setup_credentials")
+            .select("subdomain, admin_username, admin_password, shown")
+            .eq("user_id", newUser.id)
+            .single();
+          
+          if (credentialsData && !credentialsData.shown) {
+            // Redirecionar para página de boas-vindas
+            navigate("/welcome");
+            return;
+          }
+        }
+        
+        // Se não tem credenciais, redirecionar para página de confirmação
         navigate("/auth/confirm", { state: { email } });
       }
     } catch (error: any) {
@@ -305,36 +332,20 @@ const Auth = () => {
                     />
                   </div>
                 )}
-                {isLogin && !isForgotPassword && (
-                  <div className="flex items-center space-x-2 mb-4">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsCompanyUserLogin(false);
-                        setUsername("");
-                      }}
-                      className={`flex-1 py-2 px-4 rounded-md text-sm font-medium ${
-                        !isCompanyUserLogin
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      Proprietário
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsCompanyUserLogin(true);
-                        setEmail("");
-                      }}
-                      className={`flex-1 py-2 px-4 rounded-md text-sm font-medium ${
-                        isCompanyUserLogin
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-muted-foreground"
-                      }`}
-                    >
-                      Usuário da Empresa
-                    </button>
+                {isLogin && !isForgotPassword && !getSubdomainFromHost() && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 rounded-lg mb-4">
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      💡 <strong>Login de Proprietário:</strong> Use este formulário para fazer login como proprietário da empresa.
+                      Para fazer login como usuário da empresa, acesse o subdomain da sua empresa (ex: empresa1.mofleet.com).
+                    </p>
+                  </div>
+                )}
+                {isLogin && !isForgotPassword && getSubdomainFromHost() && (
+                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 rounded-lg mb-4">
+                    <p className="text-sm text-green-800 dark:text-green-200">
+                      🔐 <strong>Login de Usuário da Empresa:</strong> Você está acessando o subdomain da empresa. 
+                      Faça login com seu username e senha.
+                    </p>
                   </div>
                 )}
                 {isLogin && !isForgotPassword && !isCompanyUserLogin && (
