@@ -26,6 +26,10 @@ interface RentalSummary {
   delivered_by: string;
   driver_name: string | null;
   received_by: string | null;
+  checkout_created_by_user: string | null;
+  checkout_created_by_company_user: string | null;
+  checkin_created_by_user: string | null;
+  checkin_created_by_company_user: string | null;
   deposit_returned: boolean;
   deposit_returned_amount: number;
   fines_amount: number;
@@ -107,7 +111,7 @@ const RentalsSummary = () => {
 
       if (checkoutError) throw checkoutError;
 
-      // Para cada checkout, buscar o checkin correspondente
+      // Para cada checkout, buscar o checkin correspondente e informações de auditoria
       const rentalsData: RentalSummary[] = [];
 
       for (const checkout of (checkouts || []) as Array<any>) {
@@ -116,6 +120,53 @@ const RentalsSummary = () => {
           .select("*")
           .eq("reservation_id", checkout.reservation_id)
           .maybeSingle();
+
+        // Buscar informações de quem fez o checkout
+        let checkoutCreatedByUser = null;
+        let checkoutCreatedByCompanyUser = null;
+        
+        if (checkout.created_by_user_id) {
+          // Buscar através de user_profiles para obter informações
+          const { data: profile } = await supabase
+            .from("user_profiles")
+            .select("user_id")
+            .eq("user_id", checkout.created_by_user_id)
+            .single();
+          if (profile) {
+            checkoutCreatedByUser = "Proprietário";
+          }
+        }
+        if (checkout.created_by_company_user_id) {
+          const { data: companyUser } = await supabase
+            .from("company_users")
+            .select("username")
+            .eq("id", checkout.created_by_company_user_id)
+            .maybeSingle();
+          checkoutCreatedByCompanyUser = companyUser?.username || null;
+        }
+
+        // Buscar informações de quem fez o checkin
+        let checkinCreatedByUser = null;
+        let checkinCreatedByCompanyUser = null;
+        
+        if (checkin?.created_by_user_id) {
+          const { data: profile } = await supabase
+            .from("user_profiles")
+            .select("user_id")
+            .eq("user_id", checkin.created_by_user_id)
+            .single();
+          if (profile) {
+            checkinCreatedByUser = "Proprietário";
+          }
+        }
+        if (checkin?.created_by_company_user_id) {
+          const { data: companyUser } = await supabase
+            .from("company_users")
+            .select("username")
+            .eq("id", checkin.created_by_company_user_id)
+            .maybeSingle();
+          checkinCreatedByCompanyUser = companyUser?.username || null;
+        }
 
         rentalsData.push({
           id: checkout.id,
@@ -127,6 +178,10 @@ const RentalsSummary = () => {
           delivered_by: checkout.delivered_by || "N/A",
           driver_name: checkout.driver_name || null,
           received_by: checkin?.received_by || null,
+          checkout_created_by_user: checkoutCreatedByUser,
+          checkout_created_by_company_user: checkoutCreatedByCompanyUser,
+          checkin_created_by_user: checkinCreatedByUser,
+          checkin_created_by_company_user: checkinCreatedByCompanyUser,
           deposit_returned: checkin?.deposit_returned || false,
           deposit_returned_amount: checkin?.deposit_returned_amount || 0,
           fines_amount: checkin?.fines_amount || 0,
@@ -695,9 +750,27 @@ const RentalsSummary = () => {
                               ? formatAngolaDate(rental.checkin_date)
                               : <Badge variant="outline">Pendente</Badge>}
                           </TableCell>
-                          <TableCell>{rental.delivered_by}</TableCell>
                           <TableCell>
-                            {rental.received_by || (
+                            <div>
+                              <div className="font-medium">{rental.delivered_by}</div>
+                              {(rental.checkout_created_by_user || rental.checkout_created_by_company_user) && (
+                                <div className="text-xs text-muted-foreground">
+                                  Registrado por: {rental.checkout_created_by_company_user || rental.checkout_created_by_user}
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {rental.received_by ? (
+                              <div>
+                                <div className="font-medium">{rental.received_by}</div>
+                                {(rental.checkin_created_by_user || rental.checkin_created_by_company_user) && (
+                                  <div className="text-xs text-muted-foreground">
+                                    Registrado por: {rental.checkin_created_by_company_user || rental.checkin_created_by_user}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
                               <span className="text-muted-foreground">-</span>
                             )}
                           </TableCell>

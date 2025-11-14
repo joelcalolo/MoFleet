@@ -3,10 +3,12 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { Car, Calendar, Users, LayoutDashboard, LogOut, UserCircle, Settings, Truck, FileText, ChevronLeft, ChevronRight, Menu } from "lucide-react";
+import { Car, Calendar, Users, LayoutDashboard, LogOut, UserCircle, Settings, Truck, FileText, ChevronLeft, ChevronRight, Menu, UserCog } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useCompanyUser } from "@/contexts/CompanyUserContext";
 
 interface LayoutProps {
   children: ReactNode;
@@ -18,14 +20,17 @@ const Layout = ({ children }: LayoutProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const isMobile = useIsMobile();
+  const { companyUser, isGerente, logout: logoutCompanyUser } = useCompanyUser();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       // Não redirecionar se estiver na landing page, auth ou páginas legais
+      // Também permitir acesso se houver company_user logado
       const publicPaths = ["/", "/auth", "/terms", "/privacy"];
-      if (!session && !publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"))) {
+      if (!session && !companyUser && !publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"))) {
         navigate("/auth");
       }
     });
@@ -33,17 +38,39 @@ const Layout = ({ children }: LayoutProps) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       // Não redirecionar se estiver na landing page, auth ou páginas legais
+      // Também permitir acesso se houver company_user logado
       const publicPaths = ["/", "/auth", "/terms", "/privacy"];
-      if (!session && !publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"))) {
+      if (!session && !companyUser && !publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"))) {
         navigate("/auth");
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate, location.pathname]);
+  }, [navigate, location.pathname, companyUser]);
+
+  useEffect(() => {
+    const checkSuperAdmin = async () => {
+      if (user && !companyUser) {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("role")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        setIsSuperAdmin(profile?.role === 'super_admin');
+      } else {
+        setIsSuperAdmin(false);
+      }
+    };
+    checkSuperAdmin();
+  }, [user, companyUser]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    // Se for company_user, apenas fazer logout do company_user
+    if (companyUser) {
+      logoutCompanyUser();
+    } else {
+      await supabase.auth.signOut();
+    }
     navigate("/auth");
   };
 
@@ -57,7 +84,8 @@ const Layout = ({ children }: LayoutProps) => {
     { icon: FileText, label: "Resumo de Alugueres", path: "/rentals-summary" },
   ];
 
-  if (!user) return null;
+  // Permitir acesso se houver user ou companyUser
+  if (!user && !companyUser) return null;
 
   const sidebarWidth = sidebarCollapsed ? "w-16" : "w-64";
 
@@ -101,7 +129,12 @@ const Layout = ({ children }: LayoutProps) => {
                 </nav>
                 <div className="p-4 border-t border-border bg-card">
                   <div className="mb-2 text-xs text-muted-foreground truncate">
-                    {user.email}
+                    {companyUser ? companyUser.username : user?.email || ""}
+                    {companyUser && (
+                      <Badge variant="secondary" className="ml-2 text-xs">
+                        {companyUser.role === "gerente" ? "Gerente" : "Técnico"}
+                      </Badge>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Button
@@ -118,6 +151,22 @@ const Layout = ({ children }: LayoutProps) => {
                       <Settings className="h-4 w-4 mr-2" />
                       Configurações
                     </Button>
+                    {!companyUser && user && isSuperAdmin && (
+                      <Button
+                        variant={location.pathname === "/company-users" ? "secondary" : "outline"}
+                        className={cn(
+                          "w-full justify-start",
+                          location.pathname === "/company-users" && "bg-secondary"
+                        )}
+                        onClick={() => {
+                          navigate("/company-users");
+                          setMobileMenuOpen(false);
+                        }}
+                      >
+                        <UserCog className="h-4 w-4 mr-2" />
+                        Usuários da Empresa
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       className="w-full justify-start"
@@ -208,7 +257,12 @@ const Layout = ({ children }: LayoutProps) => {
           )}>
             {!sidebarCollapsed && (
               <div className="mb-2 text-xs text-muted-foreground truncate">
-                {user.email}
+                {companyUser ? companyUser.username : user?.email || ""}
+                {companyUser && (
+                  <Badge variant="secondary" className="ml-2 text-xs">
+                    {companyUser.role === "gerente" ? "Gerente" : "Técnico"}
+                  </Badge>
+                )}
               </div>
             )}
             <div className="space-y-2">
@@ -225,6 +279,21 @@ const Layout = ({ children }: LayoutProps) => {
                 <Settings className={cn("h-4 w-4", !sidebarCollapsed && "mr-2")} />
                 {!sidebarCollapsed && "Configurações"}
               </Button>
+              {!companyUser && user && isSuperAdmin && (
+                <Button
+                  variant={location.pathname === "/company-users" ? "secondary" : "outline"}
+                  className={cn(
+                    "w-full",
+                    sidebarCollapsed ? "justify-center px-0" : "justify-start",
+                    location.pathname === "/company-users" && "bg-secondary"
+                  )}
+                  onClick={() => navigate("/company-users")}
+                  title={sidebarCollapsed ? "Usuários" : undefined}
+                >
+                  <UserCog className={cn("h-4 w-4", !sidebarCollapsed && "mr-2")} />
+                  {!sidebarCollapsed && "Usuários da Empresa"}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 className={cn(

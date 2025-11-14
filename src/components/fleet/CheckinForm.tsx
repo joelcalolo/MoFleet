@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Reservation } from "@/pages/Reservations";
 import { useCompany } from "@/hooks/useCompany";
+import { useCompanyUser } from "@/contexts/CompanyUserContext";
 import { 
   formatAngolaDate, 
   parseAngolaDate, 
@@ -35,6 +36,7 @@ interface CheckinFormProps {
 export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: CheckinFormProps) => {
   const [loading, setLoading] = useState(false);
   const { companyId } = useCompany();
+  const { companyUser } = useCompanyUser();
   
   // Inicializar com data/hora atual
   const now = new Date();
@@ -184,6 +186,9 @@ export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: Check
         }
       }
 
+      // Obter usuário autenticado
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+
       // Criar checkin com a data/hora informada
       const checkinData: any = {
         reservation_id: reservation.id,
@@ -196,6 +201,13 @@ export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: Check
         extra_fees_amount: parseFloat(formData.extra_fees_amount) || 0,
         notes: formData.notes || null,
       };
+
+      // Registrar quem fez a ação (auditoria)
+      if (companyUser) {
+        checkinData.created_by_company_user_id = companyUser.id;
+      } else if (authUser) {
+        checkinData.created_by_user_id = authUser.id;
+      }
 
       // Se houver dias extras, adicionar ao extra_fees_amount
       if (daysDifference > 0) {

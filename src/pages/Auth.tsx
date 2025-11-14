@@ -8,11 +8,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { handleError, logError } from "@/lib/errorHandler";
+import { loginCompanyUser, getSubdomainFromHost } from "@/lib/authUtils";
+import { useCompanyUser } from "@/contexts/CompanyUserContext";
 
 const Auth = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { setCompanyUser } = useCompanyUser();
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [subdomain, setSubdomain] = useState<string>("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -20,11 +25,18 @@ const Auth = () => {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
+  const [isCompanyUserLogin, setIsCompanyUserLogin] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [isResetPassword, setIsResetPassword] = useState(false);
   const [lastAttemptTime, setLastAttemptTime] = useState<number>(0);
 
   useEffect(() => {
+    // Detectar subdomain automaticamente
+    const detected = getSubdomainFromHost();
+    if (detected) {
+      setSubdomain(detected);
+    }
+
     // Verificar se está no modo de redefinição de senha
     const mode = searchParams.get("mode");
     if (mode === "reset-password") {
@@ -122,7 +134,17 @@ const Auth = () => {
       return;
     }
 
-    if (!email || !password) {
+    if (isLogin && isCompanyUserLogin) {
+      if (!username || !password) {
+        toast.error("Por favor, preencha todos os campos");
+        return;
+      }
+    } else if (isLogin && !isCompanyUserLogin) {
+      if (!email || !password) {
+        toast.error("Por favor, preencha todos os campos");
+        return;
+      }
+    } else if (!email || !password) {
       toast.error("Por favor, preencha todos os campos");
       return;
     }
@@ -141,15 +163,41 @@ const Auth = () => {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        // Login de usuário da empresa (subdomain + username/password)
+        if (isCompanyUserLogin) {
+          // Se não detectou subdomain automaticamente, verificar se foi preenchido
+          const subdomainToUse = subdomain || getSubdomainFromHost();
+          
+          if (!subdomainToUse) {
+            toast.error("Por favor, informe o código da empresa (subdomain)");
+            return;
+          }
 
-        if (error) throw error;
-        
-        toast.success("Login realizado com sucesso");
-        navigate("/dashboard");
+          if (!username || !password) {
+            toast.error("Por favor, preencha username e senha");
+            return;
+          }
+
+          const companyUser = await loginCompanyUser(subdomainToUse, username, password);
+          if (!companyUser) {
+            toast.error("Código da empresa, username ou senha incorretos");
+            return;
+          }
+          setCompanyUser(companyUser);
+          toast.success("Login realizado com sucesso");
+          navigate("/dashboard");
+        } else {
+          // Login de proprietário (email/password)
+          const { error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+
+          if (error) throw error;
+          
+          toast.success("Login realizado com sucesso");
+          navigate("/dashboard");
+        }
       } else {
         const { error } = await supabase.auth.signUp({
           email,
@@ -257,18 +305,114 @@ const Auth = () => {
                     />
                   </div>
                 )}
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="seu@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    disabled={loading}
-                    required
-                  />
-                </div>
+                {isLogin && !isForgotPassword && (
+                  <div className="flex items-center space-x-2 mb-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCompanyUserLogin(false);
+                        setUsername("");
+                      }}
+                      className={`flex-1 py-2 px-4 rounded-md text-sm font-medium ${
+                        !isCompanyUserLogin
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      Proprietário
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCompanyUserLogin(true);
+                        setEmail("");
+                      }}
+                      className={`flex-1 py-2 px-4 rounded-md text-sm font-medium ${
+                        isCompanyUserLogin
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground"
+                      }`}
+                    >
+                      Usuário da Empresa
+                    </button>
+                  </div>
+                )}
+                {isLogin && !isForgotPassword && !isCompanyUserLogin && (
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="seu@email.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      disabled={loading}
+                      required
+                    />
+                  </div>
+                )}
+                {isLogin && !isForgotPassword && isCompanyUserLogin && (
+                  <>
+                    {subdomain ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="subdomain">Código da Empresa</Label>
+                        <Input
+                          id="subdomain"
+                          type="text"
+                          value={subdomain}
+                          onChange={(e) => setSubdomain(e.target.value)}
+                          disabled={loading}
+                          required
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Detectado automaticamente do endereço: {window.location.hostname}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Label htmlFor="subdomain">Código da Empresa *</Label>
+                        <Input
+                          id="subdomain"
+                          type="text"
+                          placeholder="codigo-empresa"
+                          value={subdomain}
+                          onChange={(e) => setSubdomain(e.target.value)}
+                          disabled={loading}
+                          required
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          O código da empresa é o subdomain (ex: empresa1.mofleet.com → código: empresa1)
+                        </p>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="username">Username</Label>
+                      <Input
+                        id="username"
+                        type="text"
+                        placeholder="nomeusuario"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        disabled={loading}
+                        required
+                      />
+                    </div>
+                  </>
+                )}
+                {!isLogin && !isForgotPassword && (
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="seu@email.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      disabled={loading}
+                      required
+                    />
+                  </div>
+                )}
                 {!isForgotPassword && (
                   <div className="space-y-2">
                     <Label htmlFor="password">Senha</Label>

@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { CompanyUserProvider } from "@/contexts/CompanyUserContext";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
@@ -16,6 +17,7 @@ import RentalsSummary from "./pages/RentalsSummary";
 import RentalDetails from "./pages/RentalDetails";
 import ReservationDetails from "./pages/ReservationDetails";
 import Settings from "./pages/Settings";
+import CompanyUsers from "./pages/CompanyUsers";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
@@ -24,10 +26,11 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
+    <CompanyUserProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/dashboard" element={<Dashboard />} />
@@ -42,6 +45,7 @@ const App = () => (
           <Route path="/rental/:id" element={<RentalDetails />} />
           <Route path="/reservation/:id" element={<ReservationDetails />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/company-users" element={<CompanyUsers />} />
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/privacy" element={<PrivacyPolicy />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
@@ -49,6 +53,7 @@ const App = () => (
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
+    </CompanyUserProvider>
   </QueryClientProvider>
 );
 

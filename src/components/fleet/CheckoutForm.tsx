@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Reservation } from "@/pages/Reservations";
 import { useCompany } from "@/hooks/useCompany";
+import { useCompanyUser } from "@/contexts/CompanyUserContext";
 import { formatAngolaDate, formatDateTimeLocal, parseDateTimeLocal } from "@/lib/dateUtils";
 import { handleError, logError } from "@/lib/errorHandler";
 
@@ -20,6 +21,7 @@ interface CheckoutFormProps {
 export const CheckoutForm = ({ reservation, onClose, onSuccess }: CheckoutFormProps) => {
   const [loading, setLoading] = useState(false);
   const { companyId } = useCompany();
+  const { companyUser } = useCompanyUser();
   
   // Inicializar com data/hora atual
   const now = new Date();
@@ -56,6 +58,9 @@ export const CheckoutForm = ({ reservation, onClose, onSuccess }: CheckoutFormPr
       // Converter a data/hora informada para ISO string
       const checkoutDateTime = parseDateTimeLocal(formData.checkout_datetime);
 
+      // Obter usuário autenticado
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+
       // Criar checkout com a data/hora informada
       const checkoutData: any = {
         reservation_id: reservation.id,
@@ -68,6 +73,13 @@ export const CheckoutForm = ({ reservation, onClose, onSuccess }: CheckoutFormPr
       // Adicionar nome do motorista se a reserva for com motorista
       if (reservation.with_driver && formData.driver_name) {
         checkoutData.driver_name = formData.driver_name;
+      }
+
+      // Registrar quem fez a ação (auditoria)
+      if (companyUser) {
+        checkoutData.created_by_company_user_id = companyUser.id;
+      } else if (authUser) {
+        checkoutData.created_by_user_id = authUser.id;
       }
 
       // Adicionar company_id se disponível (após migration)

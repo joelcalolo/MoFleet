@@ -12,6 +12,7 @@ import { Car } from "@/pages/Cars";
 import { Customer } from "@/pages/Customers";
 import { parseAngolaDate, formatAngolaDate } from "@/lib/dateUtils";
 import { useCompany } from "@/hooks/useCompany";
+import { useCompanyUser } from "@/contexts/CompanyUserContext";
 import { handleError, logError } from "@/lib/errorHandler";
 
 interface ReservationFormProps {
@@ -202,6 +203,9 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
         return;
       }
 
+      // Obter usuário autenticado
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+
       // Preparar dados para salvar, removendo campos que podem não existir no banco ainda
       const dataToSave: any = {
         car_id: formData.car_id,
@@ -216,6 +220,15 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
         notes: formData.notes || null,
         created_by: formData.created_by || null,
       };
+
+      // Registrar quem fez a ação (auditoria) - apenas ao criar nova reserva
+      if (!reservation) {
+        if (companyUser) {
+          dataToSave.created_by_company_user_id = companyUser.id;
+        } else if (authUser) {
+          dataToSave.created_by_user_id = authUser.id;
+        }
+      }
 
       // Adicionar campos opcionais apenas se a migration foi aplicada
       // Tentar adicionar, mas não falhar se não existirem

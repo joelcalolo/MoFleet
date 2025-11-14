@@ -11,6 +11,7 @@ import { Reservation } from "@/pages/Reservations";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { parseAngolaDate, getAngolaDate, formatAngolaDate, isSameAngolaDay } from "@/lib/dateUtils";
+import { useCompanyUser } from "@/contexts/CompanyUserContext";
 
 interface Stats {
   activeReservations: number;
@@ -39,6 +40,7 @@ const CAR_COLORS = [
 ];
 
 const Dashboard = () => {
+  const { isGerente } = useCompanyUser();
   const [stats, setStats] = useState<Stats>({
     activeReservations: 0,
     availableCars: 0,
@@ -395,6 +397,14 @@ const Dashboard = () => {
       color: "text-purple-600",
       bgColor: "bg-purple-50 dark:bg-purple-950",
     },
+    // Mostrar receita apenas para gerentes
+    ...(isGerente ? [{
+      title: "Receita Total",
+      value: `${stats.totalRevenue.toLocaleString("pt-AO", { style: "currency", currency: "AOA", minimumFractionDigits: 0 })}`,
+      icon: DollarSign,
+      color: "text-green-600",
+      bgColor: "bg-green-50 dark:bg-green-950",
+    }] : []),
     {
       title: "Reservas Concluídas",
       value: stats.completedReservations,

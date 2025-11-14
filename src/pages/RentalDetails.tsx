@@ -17,6 +17,9 @@ interface RentalDetails {
     checkout_date: string;
     initial_km: number;
     delivered_by: string;
+    driver_name: string | null;
+    created_by_user_id: string | null;
+    created_by_company_user_id: string | null;
     notes: string | null;
   };
   checkin: {
@@ -24,6 +27,8 @@ interface RentalDetails {
     checkin_date: string;
     final_km: number;
     received_by: string;
+    created_by_user_id: string | null;
+    created_by_company_user_id: string | null;
     deposit_returned: boolean;
     deposit_returned_amount: number;
     fines_amount: number;
@@ -109,9 +114,34 @@ const RentalDetails = () => {
         return;
       }
 
+      // Buscar informações de auditoria
+      let checkoutCreatedBy = null;
+      if (checkout.created_by_company_user_id) {
+        const { data: companyUser } = await supabase
+          .from("company_users")
+          .select("username")
+          .eq("id", checkout.created_by_company_user_id)
+          .maybeSingle();
+        checkoutCreatedBy = companyUser?.username || null;
+      } else if (checkout.created_by_user_id) {
+        checkoutCreatedBy = "Proprietário";
+      }
+
+      let checkinCreatedBy = null;
+      if (checkin?.created_by_company_user_id) {
+        const { data: companyUser } = await supabase
+          .from("company_users")
+          .select("username")
+          .eq("id", checkin.created_by_company_user_id)
+          .maybeSingle();
+        checkinCreatedBy = companyUser?.username || null;
+      } else if (checkin?.created_by_user_id) {
+        checkinCreatedBy = "Proprietário";
+      }
+
       setRental({
-        checkout: checkout as any,
-        checkin: checkin as any,
+        checkout: { ...checkout as any, created_by_display: checkoutCreatedBy },
+        checkin: checkin ? { ...checkin as any, created_by_display: checkinCreatedBy } : null,
         reservation: reservation as any,
       });
     } catch (error) {
@@ -490,6 +520,11 @@ const RentalDetails = () => {
                 <div>
                   <Label className="text-sm text-muted-foreground">Entregado Por</Label>
                   <p className="font-semibold">{rental.checkout.delivered_by}</p>
+                  {(rental.checkout as any).created_by_display && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Registrado por: {(rental.checkout as any).created_by_display}
+                    </p>
+                  )}
                 </div>
                 {rental.reservation.with_driver && rental.checkout.driver_name && (
                   <div>
@@ -590,6 +625,11 @@ const RentalDetails = () => {
                     <div>
                       <Label className="text-sm text-muted-foreground">Recebido Por</Label>
                       <p className="font-semibold">{rental.checkin.received_by}</p>
+                      {(rental.checkin as any).created_by_display && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Registrado por: {(rental.checkin as any).created_by_display}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <Label className="text-sm text-muted-foreground">Caução Devolvida</Label>
