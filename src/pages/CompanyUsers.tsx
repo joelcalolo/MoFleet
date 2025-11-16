@@ -12,6 +12,7 @@ import Layout from "@/components/Layout";
 import { toast } from "sonner";
 import { useCompany } from "@/hooks/useCompany";
 import { hashPassword } from "@/lib/authUtils";
+import { handleError, logError } from "@/lib/errorHandler";
 import {
   Dialog,
   DialogContent,
@@ -120,8 +121,9 @@ const CompanyUsers = () => {
       if (error) throw error;
       setUsers(data || []);
     } catch (error: any) {
-      console.error("Error fetching users:", error);
-      toast.error("Erro ao carregar usuários");
+      logError(error, "CompanyUsers - Fetch Users");
+      const errorMessage = handleError(error, "Erro ao carregar usuários");
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -176,7 +178,7 @@ const CompanyUsers = () => {
           .from("company_users")
           .update(updateData)
           .eq("id", editingUser.id)
-          .eq("company_id", companyId);
+          .eq("company_id", selectedCompanyId);
 
         if (error) throw error;
         toast.success("Usuário atualizado com sucesso");
@@ -202,8 +204,9 @@ const CompanyUsers = () => {
       resetForm();
       fetchUsers();
     } catch (error: any) {
-      console.error("Error saving user:", error);
-      toast.error(error.message || "Erro ao salvar usuário");
+      logError(error, "CompanyUsers - Save User");
+      const errorMessage = handleError(error, "Erro ao salvar usuário");
+      toast.error(errorMessage);
     }
   };
 
@@ -221,8 +224,9 @@ const CompanyUsers = () => {
       toast.success("Usuário excluído com sucesso");
       fetchUsers();
     } catch (error: any) {
-      console.error("Error deleting user:", error);
-      toast.error("Erro ao excluir usuário");
+      logError(error, "CompanyUsers - Delete User");
+      const errorMessage = handleError(error, "Erro ao excluir usuário");
+      toast.error(errorMessage);
     }
   };
 
