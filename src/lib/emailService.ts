@@ -50,5 +50,35 @@ export class EmailService {
       throw error;
     }
   }
+
+  /**
+   * Envia email com credenciais de acesso
+   */
+  static async sendCredentialsEmail(
+    email: string,
+    companyName: string,
+    subdomain: string,
+    adminUsername: string,
+    adminPassword: string
+  ) {
+    try {
+      const { data, error } = await supabase.functions.invoke("send-email", {
+        body: {
+          type: "credentials",
+          email,
+          companyName,
+          subdomain,
+          adminUsername,
+          adminPassword,
+        },
+      });
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error("Erro ao enviar email de credenciais:", error);
+      throw error;
+    }
+  }
 }
 
