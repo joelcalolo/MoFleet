@@ -1,24 +1,7 @@
--- Corrigir uso de digest() que requer extensão pgcrypto
--- Esta migration corrige o erro "function digest(text, unknown) does not exist"
--- Solução: criar extensão pgcrypto ou usar alternativa
+-- Garantir que pgcrypto esteja acessível na função handle_new_user
+-- Esta migration corrige o problema quando pgcrypto está instalada mas não acessível
 
--- Tentar criar extensão pgcrypto (necessária para digest())
--- No Supabase, a extensão geralmente está disponível mas precisa ser habilitada
-DO $$
-BEGIN
-  -- Tentar criar a extensão
-  CREATE EXTENSION IF NOT EXISTS pgcrypto;
-EXCEPTION
-  WHEN insufficient_privilege THEN
-    -- Se não tiver permissão, tentar habilitar via ALTER DATABASE
-    -- (pode não funcionar, mas não vai quebrar)
-    RAISE NOTICE 'Extensão pgcrypto não pôde ser criada. Verifique permissões ou habilite manualmente no Supabase Dashboard.';
-  WHEN OTHERS THEN
-    -- Outros erros: logar mas continuar
-    RAISE NOTICE 'Erro ao criar extensão pgcrypto: %', SQLERRM;
-END $$;
-
--- Atualizar função handle_new_user para usar a nova função de hash
+-- Atualizar função handle_new_user para garantir acesso ao pgcrypto
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -72,34 +55,33 @@ BEGIN
   -- Gerar senha aleatória para o admin da empresa
   admin_password := public.generate_random_password();
   
-  -- Fazer hash da senha usando SHA-256 (requer extensão pgcrypto)
-  -- IMPORTANTE: A extensão pgcrypto deve estar habilitada no Supabase
-  -- Usar schema explícito para garantir que a função seja encontrada
+  -- Fazer hash da senha usando SHA-256
+  -- Tentar múltiplas formas de acessar pgcrypto
   BEGIN
-    -- Verificar se a extensão está disponível
+    -- Verificar se a extensão está instalada
     IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgcrypto') THEN
-      RAISE EXCEPTION 'Extensão pgcrypto não está disponível. Por favor, habilite-a no Supabase Dashboard: Database > Extensions > pgcrypto > Enable';
+      RAISE EXCEPTION 'Extensão pgcrypto não está instalada. Por favor, habilite-a no Supabase Dashboard: Database > Extensions > pgcrypto > Enable';
     END IF;
     
-    -- Tentar usar SHA-256 via pgcrypto com schema explícito
-    -- Usar pgcrypto.digest() para garantir que encontre a função
+    -- Tentar usar pgcrypto.digest() com schema explícito
     BEGIN
-      admin_password_hash := encode(pgcrypto.digest(admin_password, 'sha256'), 'hex');
+      PERFORM set_config('search_path', 'public, pgcrypto', false);
+      admin_password_hash := encode(digest(admin_password, 'sha256'), 'hex');
     EXCEPTION
-      WHEN undefined_function THEN
-        -- Se ainda não encontrar, tentar sem schema (pode estar no search_path)
-        admin_password_hash := encode(digest(admin_password, 'sha256'), 'hex');
       WHEN OTHERS THEN
-        RAISE;
+        -- Se falhar, tentar com schema explícito
+        BEGIN
+          admin_password_hash := encode(pgcrypto.digest(admin_password, 'sha256'), 'hex');
+        EXCEPTION
+          WHEN OTHERS THEN
+            -- Última tentativa: usar diretamente
+            admin_password_hash := encode(public.digest(admin_password, 'sha256'), 'hex');
+        END;
     END;
   EXCEPTION
     WHEN OTHERS THEN
-      -- Se qualquer erro ocorrer, verificar se é problema de extensão
-      IF SQLERRM LIKE '%digest%' OR SQLERRM LIKE '%pgcrypto%' THEN
-        RAISE EXCEPTION 'Extensão pgcrypto não está disponível ou não está acessível. Por favor, habilite-a no Supabase Dashboard: Database > Extensions > pgcrypto > Enable. Erro: %', SQLERRM;
-      ELSE
-        RAISE;
-      END IF;
+      -- Se ainda falhar, dar erro claro
+      RAISE EXCEPTION 'Erro ao fazer hash da senha. Verifique se pgcrypto está habilitada e acessível. Erro: %', SQLERRM;
   END;
   
   -- Verificar se username 'admin' já existe para esta empresa, se sim, adicionar número
@@ -120,13 +102,12 @@ BEGIN
     new_company_id,
     admin_username,
     admin_password_hash,
-    'gerente', -- Gerente tem acesso completo
+    'gerente',
     true,
     NEW.id
   );
   
   -- Armazenar senha temporariamente em uma tabela auxiliar para exibir ao usuário
-  -- Criar tabela temporária se não existir
   CREATE TABLE IF NOT EXISTS public.company_setup_credentials (
     user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     subdomain TEXT NOT NULL,
@@ -171,7 +152,23 @@ BEGIN
     admin_password = EXCLUDED.admin_password,
     shown = false;
 
+  -- Enviar email com credenciais (tentar, mas não falhar se não conseguir)
+  BEGIN
+    PERFORM public.send_credentials_email(
+      NEW.email,
+      company_name,
+      generated_subdomain,
+      admin_username,
+      admin_password
+    );
+  EXCEPTION
+    WHEN OTHERS THEN
+      -- Não falhar se o email não puder ser enviado
+      -- As credenciais ainda estarão disponíveis na página de boas-vindas
+      RAISE NOTICE 'Email de credenciais não pôde ser enviado: %', SQLERRM;
+  END;
+
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pgcrypto;
 

@@ -156,13 +156,32 @@ BEGIN
   
   -- Fazer hash da senha usando SHA-256 (requer extensão pgcrypto)
   -- IMPORTANTE: A extensão pgcrypto deve estar habilitada no Supabase
+  -- Usar schema explícito para garantir que a função seja encontrada
   BEGIN
-    admin_password_hash := encode(digest(admin_password, 'sha256'), 'hex');
-  EXCEPTION
-    WHEN undefined_function THEN
+    -- Verificar se a extensão está disponível
+    IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgcrypto') THEN
       RAISE EXCEPTION 'Extensão pgcrypto não está disponível. Por favor, habilite-a no Supabase Dashboard: Database > Extensions > pgcrypto > Enable';
+    END IF;
+    
+    -- Tentar usar SHA-256 via pgcrypto com schema explícito
+    -- Usar pgcrypto.digest() para garantir que encontre a função
+    BEGIN
+      admin_password_hash := encode(pgcrypto.digest(admin_password, 'sha256'), 'hex');
+    EXCEPTION
+      WHEN undefined_function THEN
+        -- Se ainda não encontrar, tentar sem schema (pode estar no search_path)
+        admin_password_hash := encode(digest(admin_password, 'sha256'), 'hex');
+      WHEN OTHERS THEN
+        RAISE;
+    END;
+  EXCEPTION
     WHEN OTHERS THEN
-      RAISE;
+      -- Se qualquer erro ocorrer, verificar se é problema de extensão
+      IF SQLERRM LIKE '%digest%' OR SQLERRM LIKE '%pgcrypto%' THEN
+        RAISE EXCEPTION 'Extensão pgcrypto não está disponível ou não está acessível. Por favor, habilite-a no Supabase Dashboard: Database > Extensions > pgcrypto > Enable. Erro: %', SQLERRM;
+      ELSE
+        RAISE;
+      END IF;
   END;
   
   -- Verificar se username 'admin' já existe para esta empresa, se sim, adicionar número
