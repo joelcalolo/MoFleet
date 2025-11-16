@@ -15,4 +15,19 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    // Garantir que os assets sejam gerados corretamente
+    assetsDir: "assets",
+    rollupOptions: {
+      output: {
+        // Manter nomes de arquivo consistentes
+        entryFileNames: "assets/[name]-[hash].js",
+        chunkFileNames: "assets/[name]-[hash].js",
+        assetFileNames: "assets/[name]-[hash].[ext]",
+      },
+    },
+    // Garantir que o build não falhe silenciosamente
+    minify: "esbuild",
+    sourcemap: false,
+  },
 }));
