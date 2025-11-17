@@ -56,32 +56,28 @@ BEGIN
   admin_password := public.generate_random_password();
   
   -- Fazer hash da senha usando SHA-256
-  -- Tentar múltiplas formas de acessar pgcrypto
+  -- No Supabase, pgcrypto está no schema 'extensions'
   BEGIN
     -- Verificar se a extensão está instalada
     IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgcrypto') THEN
       RAISE EXCEPTION 'Extensão pgcrypto não está instalada. Por favor, habilite-a no Supabase Dashboard: Database > Extensions > pgcrypto > Enable';
     END IF;
     
-    -- Tentar usar pgcrypto.digest() com schema explícito
-    BEGIN
-      PERFORM set_config('search_path', 'public, pgcrypto', false);
-      admin_password_hash := encode(digest(admin_password, 'sha256'), 'hex');
-    EXCEPTION
-      WHEN OTHERS THEN
-        -- Se falhar, tentar com schema explícito
-        BEGIN
-          admin_password_hash := encode(pgcrypto.digest(admin_password, 'sha256'), 'hex');
-        EXCEPTION
-          WHEN OTHERS THEN
-            -- Última tentativa: usar diretamente
-            admin_password_hash := encode(public.digest(admin_password, 'sha256'), 'hex');
-        END;
-    END;
+    -- Usar extensions.digest() explicitamente (schema padrão do Supabase)
+    admin_password_hash := encode(extensions.digest(admin_password, 'sha256'), 'hex');
   EXCEPTION
+    WHEN undefined_function THEN
+      -- Se extensions.digest não funcionar, tentar outras formas
+      BEGIN
+        -- Tentar pgcrypto.digest (caso esteja em schema diferente)
+        admin_password_hash := encode(pgcrypto.digest(admin_password, 'sha256'), 'hex');
+      EXCEPTION
+        WHEN OTHERS THEN
+          -- Última tentativa: sem schema (se estiver no search_path)
+          admin_password_hash := encode(digest(admin_password, 'sha256'), 'hex');
+      END;
     WHEN OTHERS THEN
-      -- Se ainda falhar, dar erro claro
-      RAISE EXCEPTION 'Erro ao fazer hash da senha. Verifique se pgcrypto está habilitada e acessível. Erro: %', SQLERRM;
+      RAISE EXCEPTION 'Erro ao fazer hash da senha. Verifique se pgcrypto está habilitada. Erro: %', SQLERRM;
   END;
   
   -- Verificar se username 'admin' já existe para esta empresa, se sim, adicionar número
@@ -170,5 +166,5 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pgcrypto;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions;
 

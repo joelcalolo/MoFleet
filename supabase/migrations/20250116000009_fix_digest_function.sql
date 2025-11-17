@@ -81,14 +81,20 @@ BEGIN
       RAISE EXCEPTION 'Extensão pgcrypto não está disponível. Por favor, habilite-a no Supabase Dashboard: Database > Extensions > pgcrypto > Enable';
     END IF;
     
-    -- Tentar usar SHA-256 via pgcrypto com schema explícito
-    -- Usar pgcrypto.digest() para garantir que encontre a função
+    -- Usar extensions.digest() explicitamente (schema padrão do Supabase)
+    -- No Supabase, pgcrypto está no schema 'extensions'
     BEGIN
-      admin_password_hash := encode(pgcrypto.digest(admin_password, 'sha256'), 'hex');
+      admin_password_hash := encode(extensions.digest(admin_password, 'sha256'), 'hex');
     EXCEPTION
       WHEN undefined_function THEN
-        -- Se ainda não encontrar, tentar sem schema (pode estar no search_path)
-        admin_password_hash := encode(digest(admin_password, 'sha256'), 'hex');
+        -- Se extensions.digest não funcionar, tentar outras formas
+        BEGIN
+          admin_password_hash := encode(pgcrypto.digest(admin_password, 'sha256'), 'hex');
+        EXCEPTION
+          WHEN OTHERS THEN
+            -- Última tentativa: sem schema (se estiver no search_path)
+            admin_password_hash := encode(digest(admin_password, 'sha256'), 'hex');
+        END;
       WHEN OTHERS THEN
         RAISE;
     END;
@@ -173,5 +179,5 @@ BEGIN
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions;
 
