@@ -57,12 +57,29 @@ export const CarForm = ({ car, onClose }: CarFormProps) => {
       } else {
         if (!companyId) {
           toast.error("Erro: Empresa não encontrada");
+          console.error("CarForm: companyId is null, cannot insert car");
           return;
         }
 
-        const { error } = await supabase.from("cars").insert([{ ...formData, company_id: companyId }]);
+        const insertData = { ...formData, company_id: companyId };
+        console.log("CarForm: Inserting car with data:", {
+          ...insertData,
+          company_id: companyId,
+          hasCompanyId: !!companyId
+        });
 
-        if (error) throw error;
+        const { data, error } = await supabase
+          .from("cars")
+          .insert([insertData])
+          .select();
+
+        if (error) {
+          console.error("CarForm: Error inserting car:", error);
+          console.error("CarForm: Error details:", JSON.stringify(error, null, 2));
+          throw error;
+        }
+
+        console.log("CarForm: Car inserted successfully:", data);
         toast.success("Carro cadastrado com sucesso");
       }
 

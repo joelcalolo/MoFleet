@@ -56,11 +56,12 @@ CREATE POLICY "Users can view cars from their company"
     public.is_super_admin()
     OR
     -- Owner/admin pode ver carros da sua empresa
+    -- Aceitar is_active = true OU NULL (compatibilidade com dados antigos)
     company_id IN (
       SELECT company_id 
       FROM public.user_profiles 
       WHERE user_id = auth.uid() 
-        AND is_active = true
+        AND (is_active = true OR is_active IS NULL)
     )
     OR
     -- Se company_id for NULL, permitir (para compatibilidade com dados antigos)
@@ -75,11 +76,12 @@ CREATE POLICY "Users can insert cars to their company"
     public.is_super_admin()
     OR
     -- Owner/admin pode criar carros na sua empresa
+    -- Aceitar is_active = true OU NULL (compatibilidade com dados antigos)
     company_id IN (
       SELECT company_id 
       FROM public.user_profiles 
       WHERE user_id = auth.uid() 
-        AND is_active = true
+        AND (is_active = true OR is_active IS NULL)
     )
     OR
     -- Se company_id for NULL, permitir (será definido automaticamente)
@@ -94,11 +96,12 @@ CREATE POLICY "Users can update cars from their company"
     public.is_super_admin()
     OR
     -- Owner/admin pode atualizar carros da sua empresa
+    -- Aceitar is_active = true OU NULL (compatibilidade com dados antigos)
     company_id IN (
       SELECT company_id 
       FROM public.user_profiles 
       WHERE user_id = auth.uid() 
-        AND is_active = true
+        AND (is_active = true OR is_active IS NULL)
     )
     OR
     -- Se company_id for NULL, permitir (para compatibilidade)
@@ -113,11 +116,12 @@ CREATE POLICY "Users can delete cars from their company"
     public.is_super_admin()
     OR
     -- Owner/admin pode deletar carros da sua empresa
+    -- Aceitar is_active = true OU NULL (compatibilidade com dados antigos)
     company_id IN (
       SELECT company_id 
       FROM public.user_profiles 
       WHERE user_id = auth.uid() 
-        AND is_active = true
+        AND (is_active = true OR is_active IS NULL)
     )
     OR
     -- Se company_id for NULL, permitir (para compatibilidade)
