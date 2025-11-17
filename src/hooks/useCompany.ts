@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { getCurrentCompanyUser, getSubdomainFromHost } from "@/lib/authUtils";
+import { getCurrentCompanyUser, getSubdomainFromHost, logoutCompanyUser } from "@/lib/authUtils";
 
 export function useCompany() {
   const [companyId, setCompanyId] = useState<string | null>(null);
@@ -20,35 +20,42 @@ export function useCompany() {
         if (detectedSubdomain) {
           setSubdomain(detectedSubdomain);
           
-          // Buscar company pelo subdomain
-          const { data: company, error } = await supabase
-            .from("companies")
-            .select("id")
-            .eq("subdomain", detectedSubdomain)
-            .maybeSingle();
+          // Buscar company pelo subdomain usando função RPC (bypassa RLS)
+          console.log("useCompany: Searching company by subdomain via RPC:", detectedSubdomain);
+          const { data: companyData, error } = await supabase
+            .rpc('get_company_by_subdomain', { p_subdomain: detectedSubdomain });
           
-          console.log("useCompany: Company by subdomain:", { company, error });
+          console.log("useCompany: Company by subdomain (RPC):", { 
+            company: companyData, 
+            error: error ? { message: error.message, code: error.code, details: error.details } : null 
+          });
           
-          if (company && !error) {
-            console.log("useCompany: Found company by subdomain:", company.id);
-            setCompanyId(company.id);
+          if (error) {
+            console.error("useCompany: Error fetching company by subdomain:", error);
+            // Tentar método direto como fallback
+            const { data: companyDirect, error: errorDirect } = await supabase
+              .from("companies")
+              .select("id")
+              .eq("subdomain", detectedSubdomain)
+              .maybeSingle();
+            
+            if (companyDirect && !errorDirect) {
+              console.log("useCompany: Found company by subdomain (direct fallback):", companyDirect.id);
+              setCompanyId(companyDirect.id);
+              setLoading(false);
+              return;
+            }
+          } else if (companyData && companyData.id) {
+            console.log("useCompany: Found company by subdomain:", companyData.id);
+            setCompanyId(companyData.id);
             setLoading(false);
             return;
+          } else {
+            console.warn("useCompany: No company found for subdomain:", detectedSubdomain);
           }
         }
 
-        // 2. Se não encontrou por subdomain, verificar company_user logado
-        const companyUser = getCurrentCompanyUser();
-        console.log("useCompany: Company user from localStorage:", companyUser);
-        
-        if (companyUser) {
-          console.log("useCompany: Found company user, using company_id:", companyUser.company_id);
-          setCompanyId(companyUser.company_id);
-          setLoading(false);
-          return;
-        }
-
-        // 3. Se não, verificar auth user (proprietário)
+        // 2. Verificar auth user primeiro (proprietário/admin)
         console.log("useCompany: Checking auth user...");
         const { data: { user }, error: userError } = await supabase.auth.getUser();
         
@@ -58,11 +65,29 @@ export function useCompany() {
         
         console.log("useCompany: Auth user:", user ? { id: user.id, email: user.email } : null);
         
+        // 3. Se não há auth user, verificar company_user logado
         if (!user) {
-          console.log("useCompany: No auth user found");
-          setCompanyId(null);
-          setLoading(false);
-          return;
+          const companyUser = getCurrentCompanyUser();
+          console.log("useCompany: Company user from localStorage:", companyUser);
+          
+          if (companyUser) {
+            console.log("useCompany: Found company user (no auth user), using company_id:", companyUser.company_id);
+            setCompanyId(companyUser.company_id);
+            setLoading(false);
+            return;
+          } else {
+            console.log("useCompany: No auth user and no company user found");
+            setCompanyId(null);
+            setLoading(false);
+            return;
+          }
+        }
+        
+        // 4. Se há auth user, limpar company_user se existir (owner deve usar user_profile)
+        const companyUser = getCurrentCompanyUser();
+        if (companyUser) {
+          console.warn("useCompany: Found both auth user and company_user. Clearing company_user to use user_profile.");
+          logoutCompanyUser();
         }
 
         const { data: profile, error: profileError } = await supabase

@@ -73,12 +73,16 @@ const Dashboard = () => {
 
   const fetchStats = async () => {
     if (!companyId) {
-      console.warn("Company ID not available");
+      console.warn("Dashboard: Company ID not available, cannot fetch stats");
       return;
     }
 
+    console.log("Dashboard: fetchStats started for company:", companyId);
+    setLoading(true);
+
     try {
       const today = getAngolaDate();
+      console.log("Dashboard: Fetching data for company:", companyId);
 
       const [reservationsRes, carsRes, customersRes, checkoutsRes] = await Promise.all([
         supabase
@@ -97,6 +101,30 @@ const Dashboard = () => {
           .from("checkouts")
           .select("id, reservation_id"),
       ]);
+
+      console.log("Dashboard: Data fetched:", {
+        reservations: reservationsRes.data?.length || 0,
+        cars: carsRes.data?.length || 0,
+        customers: customersRes.data?.length || 0,
+        checkouts: checkoutsRes.data?.length || 0,
+        reservationsError: reservationsRes.error,
+        carsError: carsRes.error,
+        customersError: customersRes.error,
+        checkoutsError: checkoutsRes.error
+      });
+
+      if (reservationsRes.error) {
+        console.error("Dashboard: Error fetching reservations:", reservationsRes.error);
+      }
+      if (carsRes.error) {
+        console.error("Dashboard: Error fetching cars:", carsRes.error);
+      }
+      if (customersRes.error) {
+        console.error("Dashboard: Error fetching customers:", customersRes.error);
+      }
+      if (checkoutsRes.error) {
+        console.error("Dashboard: Error fetching checkouts:", checkoutsRes.error);
+      }
 
       const allReservations = reservationsRes.data || [];
       const activeReservations = allReservations.filter(r => 
@@ -155,7 +183,7 @@ const Dashboard = () => {
         if (!checkin) carsOut++;
       }
 
-      setStats({
+      const statsData = {
         activeReservations,
         availableCars,
         totalCars,
@@ -165,19 +193,27 @@ const Dashboard = () => {
         completedReservations,
         cancelledReservations,
         carsOut,
-      });
+      };
+      
+      console.log("Dashboard: Stats calculated:", statsData);
+      setStats(statsData);
     } catch (error) {
-      console.error("Error fetching stats:", error);
+      console.error("Dashboard: Error fetching stats:", error);
+      console.error("Dashboard: Error details:", JSON.stringify(error, null, 2));
     } finally {
       setLoading(false);
+      console.log("Dashboard: fetchStats completed");
     }
   };
 
   const fetchReservations = async () => {
     if (!companyId) {
-      console.warn("Company ID not available");
+      console.warn("Dashboard: Company ID not available, cannot fetch reservations");
       return;
     }
+
+    console.log("Dashboard: fetchReservations started for company:", companyId);
+    setReservationsLoading(true);
 
     try {
       const { data, error } = await supabase
@@ -190,7 +226,15 @@ const Dashboard = () => {
         .eq("company_id", companyId)
         .order("start_date", { ascending: false });
 
-      if (error) throw error;
+      console.log("Dashboard: Reservations fetched:", {
+        count: data?.length || 0,
+        error: error ? { message: error.message, code: error.code, details: error.details } : null
+      });
+
+      if (error) {
+        console.error("Dashboard: Error fetching reservations:", error);
+        throw error;
+      }
       
       // Filtrar reservas que já têm checkin (não devem aparecer no calendário)
       const reservationsWithCheckin = new Set<string>();

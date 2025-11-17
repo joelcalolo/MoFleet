@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { handleError, logError } from "@/lib/errorHandler";
-import { loginCompanyUser, getSubdomainFromHost } from "@/lib/authUtils";
+import { loginCompanyUser, getSubdomainFromHost, logoutCompanyUser } from "@/lib/authUtils";
 import { useCompanyUser } from "@/contexts/CompanyUserContext";
 
 const Auth = () => {
@@ -193,6 +193,10 @@ const Auth = () => {
           navigate("/dashboard");
         } else {
           // Login de proprietário (email/password)
+          // Limpar company_user do localStorage quando faz login como owner
+          logoutCompanyUser();
+          setCompanyUser(null);
+          
           const { error } = await supabase.auth.signInWithPassword({
             email,
             password,
