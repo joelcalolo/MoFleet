@@ -48,9 +48,9 @@ BEGIN
   VALUES (company_name, NEW.email, generated_subdomain)
   RETURNING id INTO new_company_id;
 
-  -- Criar user profile (owner)
-  INSERT INTO public.user_profiles (user_id, company_id, role)
-  VALUES (NEW.id, new_company_id, 'owner');
+  -- Criar user profile (owner) com is_active = true
+  INSERT INTO public.user_profiles (user_id, company_id, role, is_active)
+  VALUES (NEW.id, new_company_id, 'owner', true);
 
   -- Gerar senha aleatória para o admin da empresa
   admin_password := public.generate_random_password();

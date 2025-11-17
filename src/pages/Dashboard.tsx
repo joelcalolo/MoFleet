@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { parseAngolaDate, getAngolaDate, formatAngolaDate, isSameAngolaDay } from "@/lib/dateUtils";
 import { useCompanyUser } from "@/contexts/CompanyUserContext";
+import { useCompany } from "@/hooks/useCompany";
 
 interface Stats {
   activeReservations: number;
@@ -41,6 +42,7 @@ const CAR_COLORS = [
 
 const Dashboard = () => {
   const { isGerente } = useCompanyUser();
+  const { companyId, loading: companyLoading } = useCompany();
   const [stats, setStats] = useState<Stats>({
     activeReservations: 0,
     availableCars: 0,
@@ -59,21 +61,41 @@ const Dashboard = () => {
   const [expandedAlerts, setExpandedAlerts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetchStats();
-    fetchReservations();
-  }, []);
+    console.log("Dashboard: useEffect triggered", { companyId, companyLoading });
+    if (companyId && !companyLoading) {
+      console.log("Dashboard: Fetching stats and reservations for company:", companyId);
+      fetchStats();
+      fetchReservations();
+    } else {
+      console.log("Dashboard: Waiting for companyId or still loading", { companyId, companyLoading });
+    }
+  }, [companyId, companyLoading]);
 
   const fetchStats = async () => {
+    if (!companyId) {
+      console.warn("Company ID not available");
+      return;
+    }
+
     try {
       const today = getAngolaDate();
 
       const [reservationsRes, carsRes, customersRes, checkoutsRes] = await Promise.all([
         supabase
           .from("reservations")
-          .select("total_amount, status, end_date"),
-        supabase.from("cars").select("id, is_available"),
-        supabase.from("customers").select("id, is_active"),
-        supabase.from("checkouts").select("id, reservation_id"),
+          .select("total_amount, status, end_date")
+          .eq("company_id", companyId),
+        supabase
+          .from("cars")
+          .select("id, is_available")
+          .eq("company_id", companyId),
+        supabase
+          .from("customers")
+          .select("id, is_active")
+          .eq("company_id", companyId),
+        supabase
+          .from("checkouts")
+          .select("id, reservation_id"),
       ]);
 
       const allReservations = reservationsRes.data || [];
@@ -107,10 +129,24 @@ const Dashboard = () => {
 
       const totalCustomers = customersRes.data?.filter(c => c.is_active).length || 0;
 
-      // Carros fora (checkouts sem checkin)
+      // Carros fora (checkouts sem checkin) - filtrar apenas checkouts da empresa
       const checkouts = checkoutsRes.data || [];
       let carsOut = 0;
+      
+      // Buscar IDs de reservations da empresa para filtrar checkouts
+      const { data: companyReservations } = await supabase
+        .from("reservations")
+        .select("id")
+        .eq("company_id", companyId);
+      
+      const companyReservationIds = new Set(
+        (companyReservations || []).map(r => r.id)
+      );
+      
       for (const checkout of checkouts) {
+        // Só contar checkouts de reservations da empresa
+        if (!companyReservationIds.has(checkout.reservation_id)) continue;
+        
         const { data: checkin } = await supabase
           .from("checkins")
           .select("id")
@@ -138,6 +174,11 @@ const Dashboard = () => {
   };
 
   const fetchReservations = async () => {
+    if (!companyId) {
+      console.warn("Company ID not available");
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from("reservations")
@@ -146,6 +187,7 @@ const Dashboard = () => {
           cars (brand, model, license_plate),
           customers (name, phone)
         `)
+        .eq("company_id", companyId)
         .order("start_date", { ascending: false });
 
       if (error) throw error;
@@ -429,7 +471,26 @@ const Dashboard = () => {
           <p className="text-sm sm:text-base text-muted-foreground">Visão geral do sistema de reservas</p>
         </div>
 
-        {loading ? (
+        {companyLoading ? (
+          <div className="text-center py-8 text-muted-foreground">
+            Carregando dados da empresa...
+          </div>
+        ) : !companyId ? (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Empresa não encontrada</AlertTitle>
+            <AlertDescription>
+              Não foi possível carregar os dados da sua empresa. Por favor, verifique se você está logado corretamente ou entre em contato com o suporte.
+              <br />
+              <br />
+              <strong>Debug Info:</strong>
+              <br />
+              Company ID: {companyId || "null"}
+              <br />
+              Company Loading: {companyLoading ? "true" : "false"}
+            </AlertDescription>
+          </Alert>
+        ) : loading ? (
           <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <Card key={i} className="animate-pulse">

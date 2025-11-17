@@ -176,8 +176,8 @@ BEGIN
   RETURNING id INTO new_company_id;
 
   -- Create user profile linking to the company
-  INSERT INTO public.user_profiles (user_id, company_id, role)
-  VALUES (NEW.id, new_company_id, 'owner');
+  INSERT INTO public.user_profiles (user_id, company_id, role, is_active)
+  VALUES (NEW.id, new_company_id, 'owner', true);
 
   RETURN NEW;
 END;

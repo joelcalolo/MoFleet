@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useCompany } from "@/hooks/useCompany";
 import { hashPassword } from "@/lib/authUtils";
 import { handleError, logError } from "@/lib/errorHandler";
+import { useCompanyUser } from "@/contexts/CompanyUserContext";
 import {
   Dialog,
   DialogContent,
@@ -39,11 +40,14 @@ interface Company {
 
 const CompanyUsers = () => {
   const { companyId: defaultCompanyId } = useCompany();
+  const { companyUser: currentCompanyUser, isGerente } = useCompanyUser();
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [users, setUsers] = useState<CompanyUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isOwnerOrAdmin, setIsOwnerOrAdmin] = useState(false);
+  const [canManageUsers, setCanManageUsers] = useState(false);
   const [companySubdomain, setCompanySubdomain] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<CompanyUser | null>(null);
@@ -54,16 +58,26 @@ const CompanyUsers = () => {
   });
 
   useEffect(() => {
-    const checkSuperAdmin = async () => {
+    const checkPermissions = async () => {
       const { data: { user } } = await supabase.auth.getUser();
+      
       if (user) {
+        // Verificar se é super_admin ou owner/admin
         const { data: profile } = await supabase
           .from("user_profiles")
-          .select("role")
+          .select("role, company_id")
           .eq("user_id", user.id)
           .maybeSingle();
+        
         const isAdmin = profile?.role === 'super_admin';
+        const isOwnerOrAdminRole = profile?.role === 'owner' || profile?.role === 'admin';
+        
         setIsSuperAdmin(isAdmin);
+        setIsOwnerOrAdmin(isOwnerOrAdminRole);
+        
+        // Verificar se pode gerenciar usuários
+        const canManage = isAdmin || isOwnerOrAdminRole || isGerente;
+        setCanManageUsers(canManage);
         
         // Se for super_admin, buscar todas as empresas
         if (isAdmin) {
@@ -77,13 +91,18 @@ const CompanyUsers = () => {
             setSelectedCompanyId((prev) => prev || defaultCompanyId || allCompanies[0]?.id || null);
           }
         } else {
-          // Se não for super_admin, usar companyId padrão
-          setSelectedCompanyId(defaultCompanyId);
+          // Se não for super_admin, usar companyId padrão ou do company_user
+          const companyId = defaultCompanyId || currentCompanyUser?.company_id || profile?.company_id || null;
+          setSelectedCompanyId(companyId);
         }
+      } else if (currentCompanyUser && isGerente) {
+        // Se não há auth user mas há company_user gerente logado
+        setCanManageUsers(true);
+        setSelectedCompanyId(currentCompanyUser.company_id);
       }
     };
-    checkSuperAdmin();
-  }, [defaultCompanyId]);
+    checkPermissions();
+  }, [defaultCompanyId, currentCompanyUser, isGerente]);
 
   useEffect(() => {
     if (selectedCompanyId) {
@@ -144,60 +163,82 @@ const CompanyUsers = () => {
 
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
+      
+      // Verificar se é gerente (company_user)
+      if (currentCompanyUser && isGerente) {
+        const passwordHash = editingUser && !formData.password 
+          ? null 
+          : await hashPassword(formData.password || "");
+        
+        if (editingUser) {
+          // Atualizar via RPC
+          const { error } = await supabase.rpc('gerente_update_company_user', {
+            p_company_user_id: currentCompanyUser.id,
+            p_target_user_id: editingUser.id,
+            p_username: formData.username,
+            p_password_hash: passwordHash,
+            p_role: formData.role,
+            p_is_active: null
+          });
+          
+          if (error) throw error;
+          toast.success("Usuário atualizado com sucesso");
+        } else {
+          // Criar via RPC
+          const { data, error } = await supabase.rpc('gerente_create_company_user', {
+            p_company_user_id: currentCompanyUser.id,
+            p_username: formData.username,
+            p_password_hash: passwordHash!,
+            p_role: formData.role,
+            p_company_id: selectedCompanyId
+          });
+          
+          if (error) throw error;
+          toast.success("Usuário criado com sucesso");
+        }
+      } else if (authUser) {
+        // Owner/Admin ou Super Admin (usa operações diretas do Supabase)
+        if (editingUser) {
+          // Atualizar usuário existente
+          const updateData: any = {
+            username: formData.username,
+            role: formData.role,
+          };
+
+          // Se forneceu nova senha, atualizar
+          if (formData.password) {
+            const passwordHash = await hashPassword(formData.password);
+            updateData.password_hash = passwordHash;
+          }
+
+          const { error } = await supabase
+            .from("company_users")
+            .update(updateData)
+            .eq("id", editingUser.id)
+            .eq("company_id", selectedCompanyId);
+
+          if (error) throw error;
+          toast.success("Usuário atualizado com sucesso");
+        } else {
+          // Criar novo usuário
+          const passwordHash = await hashPassword(formData.password);
+
+          const { error } = await supabase
+            .from("company_users")
+            .insert({
+              company_id: selectedCompanyId,
+              username: formData.username,
+              password_hash: passwordHash,
+              role: formData.role,
+              created_by: authUser.id,
+            });
+
+          if (error) throw error;
+          toast.success("Usuário criado com sucesso");
+        }
+      } else {
         toast.error("Erro: Usuário não autenticado");
         return;
-      }
-
-      // Verificar se é super_admin
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("role")
-        .eq("user_id", authUser.id)
-        .single();
-      
-      if (profile?.role !== 'super_admin') {
-        toast.error("Apenas super administradores podem gerenciar usuários");
-        return;
-      }
-
-      if (editingUser) {
-        // Atualizar usuário existente
-        const updateData: any = {
-          username: formData.username,
-          role: formData.role,
-        };
-
-        // Se forneceu nova senha, atualizar
-        if (formData.password) {
-          const passwordHash = await hashPassword(formData.password);
-          updateData.password_hash = passwordHash;
-        }
-
-        const { error } = await supabase
-          .from("company_users")
-          .update(updateData)
-          .eq("id", editingUser.id)
-          .eq("company_id", selectedCompanyId);
-
-        if (error) throw error;
-        toast.success("Usuário atualizado com sucesso");
-      } else {
-        // Criar novo usuário
-        const passwordHash = await hashPassword(formData.password);
-
-        const { error } = await supabase
-          .from("company_users")
-          .insert({
-            company_id: selectedCompanyId,
-            username: formData.username,
-            password_hash: passwordHash,
-            role: formData.role,
-            created_by: authUser.id,
-          });
-
-        if (error) throw error;
-        toast.success("Usuário criado com sucesso");
       }
 
       setDialogOpen(false);
@@ -214,14 +255,28 @@ const CompanyUsers = () => {
     if (!confirm("Tem certeza que deseja excluir este usuário?")) return;
 
     try {
-      const { error } = await supabase
-        .from("company_users")
-        .delete()
-        .eq("id", userId)
-        .eq("company_id", selectedCompanyId);
+      // Verificar se é gerente (company_user)
+      if (currentCompanyUser && isGerente) {
+        // Deletar via RPC
+        const { error } = await supabase.rpc('gerente_delete_company_user', {
+          p_company_user_id: currentCompanyUser.id,
+          p_target_user_id: userId
+        });
+        
+        if (error) throw error;
+        toast.success("Usuário excluído com sucesso");
+      } else {
+        // Owner/Admin ou Super Admin (usa operação direta do Supabase)
+        const { error } = await supabase
+          .from("company_users")
+          .delete()
+          .eq("id", userId)
+          .eq("company_id", selectedCompanyId);
 
-      if (error) throw error;
-      toast.success("Usuário excluído com sucesso");
+        if (error) throw error;
+        toast.success("Usuário excluído com sucesso");
+      }
+      
       fetchUsers();
     } catch (error: any) {
       logError(error, "CompanyUsers - Delete User");
@@ -259,13 +314,15 @@ const CompanyUsers = () => {
     );
   }
 
-  // Verificar se é super_admin
-  if (!isSuperAdmin) {
+  // Verificar se pode gerenciar usuários
+  if (!canManageUsers) {
     return (
       <Layout>
         <div className="p-8">
           <div className="text-center py-8">
-            <p className="text-muted-foreground">Acesso restrito. Apenas super administradores podem gerenciar usuários.</p>
+            <p className="text-muted-foreground">
+              Acesso restrito. Apenas proprietários, administradores e gerentes podem gerenciar usuários.
+            </p>
           </div>
         </div>
       </Layout>
