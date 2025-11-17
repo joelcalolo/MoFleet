@@ -20,7 +20,108 @@ interface EmailPayload {
 
 serve(async (req) => {
   try {
-    const { type, email, confirmationLink, resetLink, companyName, subdomain, adminUsername, adminPassword, userId } = await req.json();
+    // Verificar autenticação
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      console.error("Erro: Authorization header ausente");
+      return new Response(
+        JSON.stringify({ error: "Authorization header é obrigatório" }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validar que o token é válido (deve começar com "Bearer ")
+    if (!authHeader.startsWith("Bearer ")) {
+      console.error("Erro: Authorization header inválido (deve começar com 'Bearer ')");
+      return new Response(
+        JSON.stringify({ error: "Authorization header inválido" }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Extrair dados do body ou query string
+    let bodyData: any = {};
+    const contentType = req.headers.get("Content-Type");
+    
+    try {
+      if (contentType?.includes("application/json")) {
+        bodyData = await req.json();
+      } else {
+        // Tentar parsear como JSON mesmo sem header correto
+        const text = await req.text();
+        if (text) {
+          try {
+            bodyData = JSON.parse(text);
+          } catch {
+            // Se não for JSON, tentar extrair da URL (query string)
+            const url = new URL(req.url);
+            bodyData = {
+              type: url.searchParams.get("type") || undefined,
+              userId: url.searchParams.get("userId") || undefined,
+              subdomain: url.searchParams.get("subdomain") || undefined,
+              adminUsername: url.searchParams.get("adminUsername") || undefined,
+              adminPassword: url.searchParams.get("adminPassword") || undefined,
+              email: url.searchParams.get("email") || undefined,
+              companyName: url.searchParams.get("companyName") || undefined,
+            };
+          }
+        } else {
+          // Se não houver body, tentar query string
+          const url = new URL(req.url);
+          bodyData = {
+            type: url.searchParams.get("type") || undefined,
+            userId: url.searchParams.get("userId") || undefined,
+            subdomain: url.searchParams.get("subdomain") || undefined,
+            adminUsername: url.searchParams.get("adminUsername") || undefined,
+            adminPassword: url.searchParams.get("adminPassword") || undefined,
+            email: url.searchParams.get("email") || undefined,
+            companyName: url.searchParams.get("companyName") || undefined,
+          };
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao parsear body:", error);
+      return new Response(
+        JSON.stringify({ error: "Erro ao processar requisição: " + error.message }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    
+    // Detectar se é um webhook do Supabase (formato padrão)
+    // Webhooks do Supabase enviam: { type: "INSERT", table: "...", record: {...}, old_record: null }
+    let type: string | undefined;
+    let email: string | undefined;
+    let confirmationLink: string | undefined;
+    let resetLink: string | undefined;
+    let companyName: string | undefined;
+    let subdomain: string | undefined;
+    let adminUsername: string | undefined;
+    let adminPassword: string | undefined;
+    let userId: string | undefined;
+    
+    if (bodyData.record && bodyData.table === "company_setup_credentials") {
+      // É um webhook do Supabase para company_setup_credentials
+      console.log("Webhook do Supabase detectado para company_setup_credentials");
+      const record = bodyData.record;
+      type = "credentials";
+      userId = record.user_id;
+      subdomain = record.subdomain;
+      adminUsername = record.admin_username;
+      adminPassword = record.admin_password;
+    } else {
+      // Formato direto (chamada manual ou outro formato)
+      type = bodyData.type;
+      email = bodyData.email;
+      confirmationLink = bodyData.confirmationLink;
+      resetLink = bodyData.resetLink;
+      companyName = bodyData.companyName;
+      subdomain = bodyData.subdomain;
+      adminUsername = bodyData.adminUsername;
+      adminPassword = bodyData.adminPassword;
+      userId = bodyData.userId;
+    }
+    
+    console.log("Dados processados:", { type, userId, subdomain, hasEmail: !!email, hasAdminUsername: !!adminUsername });
 
     // Validação de email (exceto para tipo credentials que pode buscar do userId)
     if (type !== "credentials" && !email) {

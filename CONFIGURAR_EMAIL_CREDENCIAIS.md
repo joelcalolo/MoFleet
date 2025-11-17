@@ -64,23 +64,36 @@ A forma mais confiável de enviar emails é através de webhooks do Supabase:
      - **URL**: `https://seu-projeto-ref.supabase.co/functions/v1/send-email`
        - Substitua `seu-projeto-ref` pelo seu project reference
      - **Method**: `POST`
-     - **Headers**:
-       ```
-       Content-Type: application/json
-       Authorization: Bearer sua-anon-key
-       ```
-     - **Body** (JSON):
+     - **HTTP Headers**: Clique em **Add Header** e adicione:
+       - **Header 1**:
+         - Name: `Content-Type`
+         - Value: `application/json`
+       - **Header 2**:
+         - Name: `Authorization`
+         - Value: `Bearer sua-service-role-key`
+           - ⚠️ **IMPORTANTE:** Use a `service_role_key` (não a `anon_key`) para webhooks
+           - ⚠️ Substitua `sua-service-role-key` pela sua service_role_key real
+     - **HTTP Parameters**: Deixe vazio (não é necessário)
+       
+       **Como Funciona:**
+       
+       O Supabase **automaticamente** envia os dados do registro no body da requisição em formato JSON quando um INSERT ocorre. O payload padrão será:
+       
        ```json
        {
-         "type": "credentials",
-         "userId": "{{record.user_id}}",
-         "subdomain": "{{record.subdomain}}",
-         "adminUsername": "{{record.admin_username}}",
-         "adminPassword": "{{record.admin_password}}"
+         "type": "INSERT",
+         "table": "company_setup_credentials",
+         "record": {
+           "user_id": "uuid-do-usuario",
+           "subdomain": "subdomain-exemplo",
+           "admin_username": "admin",
+           "admin_password": "senha123"
+         },
+         "old_record": null
        }
        ```
        
-       **Nota:** A Edge Function buscará automaticamente o email e company_name usando o `userId` através da função `get_credentials_with_email()` criada na migration.
+       A Edge Function detecta automaticamente este formato e extrai os dados necessários. Ela buscará automaticamente o email e company_name usando o `user_id` através da função `get_credentials_with_email()`.
 
 ### Passo 4: Deploy da Edge Function
 
