@@ -13,12 +13,12 @@ export function useCompany() {
       setLoading(true);
       
       try {
-        // 1. Primeiro, tentar detectar subdomain da URL
-        const detectedSubdomain = getSubdomainFromHost();
-        console.log("useCompany: Detected subdomain:", detectedSubdomain);
-        
-        if (detectedSubdomain) {
-          setSubdomain(detectedSubdomain);
+             // 1. Primeiro, tentar detectar subdomain da URL
+             const detectedSubdomain = getSubdomainFromHost();
+             console.log("useCompany: Detected subdomain:", detectedSubdomain);
+             
+             if (detectedSubdomain) {
+               setSubdomain(detectedSubdomain);
           
           // Buscar company pelo subdomain usando função RPC (bypassa RLS)
           console.log("useCompany: Searching company by subdomain via RPC:", detectedSubdomain);

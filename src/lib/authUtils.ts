@@ -52,9 +52,17 @@ export function getSubdomainFromHost(): string | null {
   
   // Se tiver mais de 2 partes (ex: empresa.mofleet.com), a primeira é o subdomain
   if (parts.length >= 3) {
-    return parts[0];
+    const subdomain = parts[0];
+    
+    // Se o subdomain for "www", retornar null (deve usar login de proprietário)
+    if (subdomain.toLowerCase() === 'www') {
+      return null;
+    }
+    
+    return subdomain;
   }
   
+  // Se não tiver subdomain (ex: mofleet.com), retornar null (login de proprietário)
   return null;
 }
 

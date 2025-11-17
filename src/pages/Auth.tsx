@@ -35,11 +35,12 @@ const Auth = () => {
     const detected = getSubdomainFromHost();
     if (detected) {
       setSubdomain(detected);
-      // Se estiver em um subdomain, mostrar apenas login de company user
+      // Se estiver em um subdomain (e não for "www"), mostrar apenas login de company user
       setIsCompanyUserLogin(true);
     } else {
-      // Se estiver no domínio principal, não permitir login de company user
+      // Se estiver no domínio principal ou www, mostrar apenas login de proprietário
       setIsCompanyUserLogin(false);
+      setSubdomain(""); // Limpar subdomain para garantir que não seja usado
     }
 
     // Verificar se está no modo de redefinição de senha
@@ -336,15 +337,15 @@ const Auth = () => {
                     />
                   </div>
                 )}
-                {isLogin && !isForgotPassword && !getSubdomainFromHost() && (
+                {isLogin && !isForgotPassword && !isCompanyUserLogin && (
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 rounded-lg mb-4">
                     <p className="text-sm text-blue-800 dark:text-blue-200">
-                      💡 <strong>Login de Proprietário:</strong> Use este formulário para fazer login como proprietário da empresa.
+                      💡 <strong>Login de Proprietário:</strong> Use este formulário para fazer login como proprietário da empresa com email e senha.
                       Para fazer login como usuário da empresa, acesse o subdomain da sua empresa (ex: empresa1.mofleet.com).
                     </p>
                   </div>
                 )}
-                {isLogin && !isForgotPassword && getSubdomainFromHost() && (
+                {isLogin && !isForgotPassword && isCompanyUserLogin && (
                   <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 rounded-lg mb-4">
                     <p className="text-sm text-green-800 dark:text-green-200">
                       🔐 <strong>Login de Usuário da Empresa:</strong> Você está acessando o subdomain da empresa. 
