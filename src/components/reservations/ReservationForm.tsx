@@ -27,6 +27,7 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
   const [selectedCar, setSelectedCar] = useState<Car | null>(null);
   const [overlapError, setOverlapError] = useState<string | null>(null);
   const { companyId } = useCompany();
+  const { companyUser } = useCompanyUser();
   
   const [formData, setFormData] = useState({
     car_id: reservation?.car_id || "",
@@ -128,7 +129,8 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
 
     const start = parseAngolaDate(formData.start_date);
     const end = parseAngolaDate(formData.end_date);
-    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    // Adiciona 1 dia ao cálculo para incluir o primeiro dia
+    const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
     if (days <= 0) {
       toast.error("A data de fim deve ser posterior à data de início");

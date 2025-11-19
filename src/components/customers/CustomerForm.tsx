@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Customer } from "@/pages/Customers";
 import { useCompany } from "@/hooks/useCompany";
+import { useCompanyUser } from "@/contexts/CompanyUserContext";
 import { handleError, logError } from "@/lib/errorHandler";
 
 interface CustomerFormProps {
@@ -17,6 +18,7 @@ interface CustomerFormProps {
 export const CustomerForm = ({ customer, onClose }: CustomerFormProps) => {
   const [loading, setLoading] = useState(false);
   const { companyId } = useCompany();
+  const { companyUser } = useCompanyUser();
   const [formData, setFormData] = useState({
     name: customer?.name || "",
     phone: customer?.phone || "",
