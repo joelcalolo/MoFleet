@@ -24,7 +24,7 @@ export const CustomerForm = ({ customer, onClose }: CustomerFormProps) => {
     id_document: customer?.id_document || "",
     drivers_license: customer?.drivers_license || "",
     address: customer?.address || "",
-    birth_date: customer?.birth_date || "",
+    birth_date: customer?.birth_date || null,  // Usar null em vez de string vazia
     notes: customer?.notes || "",
     is_active: customer?.is_active ?? true,
   });
@@ -34,10 +34,21 @@ export const CustomerForm = ({ customer, onClose }: CustomerFormProps) => {
     setLoading(true);
 
     try {
+      // Preparar dados para envio, convertendo strings vazias para null
+      const dataToSave = {
+        ...formData,
+        email: formData.email || null,
+        id_document: formData.id_document || null,
+        drivers_license: formData.drivers_license || null,
+        address: formData.address || null,
+        birth_date: formData.birth_date || null,
+        notes: formData.notes || null
+      };
+
       if (customer) {
         const { error } = await supabase
           .from("customers")
-          .update(formData)
+          .update(dataToSave)
           .eq("id", customer.id);
 
         if (error) throw error;
@@ -48,7 +59,7 @@ export const CustomerForm = ({ customer, onClose }: CustomerFormProps) => {
           return;
         }
 
-        const { error } = await supabase.from("customers").insert([{ ...formData, company_id: companyId }]);
+        const { error } = await supabase.from("customers").insert([{ ...dataToSave, company_id: companyId }]);
 
         if (error) throw error;
         toast.success("Cliente cadastrado com sucesso");
