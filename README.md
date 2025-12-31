@@ -1,9 +1,9 @@
 Meu Projeto
 
-## 📌 Informações do Projeto
+## Informações do Projeto
 Este é um projeto público construído com **Vite**, **TypeScript**, **React**, **shadcn-ui** e **Tailwind CSS**.  
 
-## 🛠️ Como editar o código
+## Como editar o código
 
 Existem várias formas de editar sua aplicação:
 
@@ -45,13 +45,13 @@ npm run dev
 - **shadcn-ui**  
 - **Tailwind CSS**  
 
-## 🌍 Deploy
+## Deploy
 Você pode implantar este projeto em serviços como:  
 - [Vercel](https://vercel.com/)  
 - [Netlify](https://www.netlify.com/)  
 - [GitHub Pages](https://pages.github.com/)  
 
-## 🔗 Domínio personalizado
+## Domínio personalizado
 Se usar Vercel ou Netlify, é possível conectar um domínio próprio diretamente nas configurações da plataforma.  
 
 Quer que eu já prepare uma versão **pronta para deploy no Vercel** com instruções detalhadas de configuração de domínio e CI/CD?
