@@ -12,10 +12,12 @@ interface CompanyUserContextType {
 const CompanyUserContext = createContext<CompanyUserContextType | undefined>(undefined);
 
 export function CompanyUserProvider({ children }: { children: ReactNode }) {
-  const [companyUser, setCompanyUserState] = useState<CompanyUser | null>(null);
+  // Inicializar a partir do localStorage de forma síncrona para evitar race no Layout:
+  // no primeiro render já temos companyUser correto e o redirect não dispara antes de hidratar.
+  const [companyUser, setCompanyUserState] = useState<CompanyUser | null>(() => getCurrentCompanyUser());
 
   useEffect(() => {
-    // Carregar usuário da empresa do localStorage
+    // Sincronizar com localStorage se outra aba/contexto alterar (opcional)
     const stored = getCurrentCompanyUser();
     setCompanyUserState(stored);
   }, []);

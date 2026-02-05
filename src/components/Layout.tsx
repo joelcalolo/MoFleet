@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useCompanyUser } from "@/contexts/CompanyUserContext";
+import { getCurrentCompanyUser } from "@/lib/authUtils";
 
 interface LayoutProps {
   children: ReactNode;
@@ -25,28 +26,37 @@ const Layout = ({ children }: LayoutProps) => {
   const { companyUser, isGerente, logout: logoutCompanyUser } = useCompanyUser();
 
   useEffect(() => {
+    let cancelled = false;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled) return;
       setUser(session?.user ?? null);
-      // Não redirecionar se estiver na landing page, auth ou páginas legais
-      // Também permitir acesso se houver company_user logado
       const publicPaths = ["/", "/auth", "/terms", "/privacy"];
-      if (!session && !companyUser && !publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"))) {
+      const onPublicPath = publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"));
+      // Usar getCurrentCompanyUser() no momento da decisão para evitar closure obsoleta
+      // (em refresh, companyUser do context pode ainda ser null quando o callback roda).
+      const currentCompanyUser = getCurrentCompanyUser();
+      if (!session && !currentCompanyUser && !onPublicPath) {
         navigate("/auth");
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (cancelled) return;
       setUser(session?.user ?? null);
-      // Não redirecionar se estiver na landing page, auth ou páginas legais
-      // Também permitir acesso se houver company_user logado
       const publicPaths = ["/", "/auth", "/terms", "/privacy"];
-      if (!session && !companyUser && !publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"))) {
+      const onPublicPath = publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"));
+      const currentCompanyUser = getCurrentCompanyUser();
+      if (!session && !currentCompanyUser && !onPublicPath) {
         navigate("/auth");
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, [navigate, location.pathname, companyUser]);
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [navigate, location.pathname]);
 
   useEffect(() => {
     const checkSuperAdmin = async () => {

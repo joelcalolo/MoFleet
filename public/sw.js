@@ -9,6 +9,7 @@ const urlsToCache = [
 ];
 
 // Instalar Service Worker
+// Não usar skipWaiting() para evitar que o site "atualize sozinho" e cause reload em todos os clientes.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -20,7 +21,6 @@ self.addEventListener('install', (event) => {
         console.error('Erro ao cachear recursos:', error);
       })
   );
-  self.skipWaiting();
 });
 
 // Ativar Service Worker
@@ -37,7 +37,6 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
-  return self.clients.claim();
 });
 
 // Interceptar requisições
@@ -89,9 +88,10 @@ self.addEventListener('fetch', (event) => {
         });
       })
       .catch(() => {
-        // Se falhar, retornar página offline se for navegação
+        // Não servir '/' em falha de navegação para evitar sensação de "logout" ou refresh.
+        // Deixar a requisição falhar para o utilizador ver estado de rede.
         if (event.request.mode === 'navigate') {
-          return caches.match('/');
+          return new Response('Sem ligação. Tente novamente.', { status: 503, statusText: 'Offline' });
         }
       })
   );
