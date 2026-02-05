@@ -99,7 +99,8 @@ const Dashboard = () => {
           .eq("company_id", companyId),
         supabase
           .from("checkouts")
-          .select("id, reservation_id"),
+          .select("id, reservation_id")
+          .eq("company_id", companyId),
       ]);
 
       console.log("Dashboard: Data fetched:", {
@@ -160,27 +161,24 @@ const Dashboard = () => {
       // Carros fora (checkouts sem checkin) - filtrar apenas checkouts da empresa
       const checkouts = checkoutsRes.data || [];
       let carsOut = 0;
-      
-      // Buscar IDs de reservations da empresa para filtrar checkouts
-      const { data: companyReservations } = await supabase
-        .from("reservations")
-        .select("id")
-        .eq("company_id", companyId);
-      
-      const companyReservationIds = new Set(
-        (companyReservations || []).map(r => r.id)
-      );
-      
-      for (const checkout of checkouts) {
-        // Só contar checkouts de reservations da empresa
-        if (!companyReservationIds.has(checkout.reservation_id)) continue;
-        
-        const { data: checkin } = await supabase
+
+      if (checkouts.length > 0) {
+        const reservationIds = Array.from(
+          new Set(checkouts.map((c: any) => c.reservation_id).filter(Boolean))
+        );
+
+        const { data: checkinsForCheckouts } = await supabase
           .from("checkins")
-          .select("id")
-          .eq("reservation_id", checkout.reservation_id)
-          .maybeSingle();
-        if (!checkin) carsOut++;
+          .select("reservation_id")
+          .in("reservation_id", reservationIds);
+
+        const reservationsWithCheckin = new Set(
+          (checkinsForCheckouts || []).map((c: any) => c.reservation_id)
+        );
+
+        carsOut = checkouts.filter(
+          (checkout: any) => !reservationsWithCheckin.has(checkout.reservation_id)
+        ).length;
       }
 
       const statsData = {
@@ -237,26 +235,29 @@ const Dashboard = () => {
       }
       
       // Filtrar reservas que já têm checkin (não devem aparecer no calendário)
-      const reservationsWithCheckin = new Set<string>();
-      const reservationsData = data as Reservation[] || [];
-      
-      for (const reservation of reservationsData) {
-        const { data: checkin } = await supabase
-          .from("checkins")
-          .select("id")
-          .eq("reservation_id", reservation.id)
-          .maybeSingle();
-        
-        if (checkin) {
-          reservationsWithCheckin.add(reservation.id);
-        }
+      const reservationsData = (data as Reservation[]) || [];
+
+      if (reservationsData.length === 0) {
+        setReservations([]);
+        return;
       }
-      
+
+      const reservationIds = reservationsData.map((r) => r.id);
+
+      const { data: checkinsForReservations } = await supabase
+        .from("checkins")
+        .select("reservation_id")
+        .in("reservation_id", reservationIds);
+
+      const reservationsWithCheckin = new Set(
+        (checkinsForReservations || []).map((c: any) => c.reservation_id)
+      );
+
       // Remover reservas com checkin da lista
       const filteredReservations = reservationsData.filter(
-        r => !reservationsWithCheckin.has(r.id)
+        (r) => !reservationsWithCheckin.has(r.id)
       );
-      
+
       setReservations(filteredReservations);
     } catch (error) {
       console.error("Error fetching reservations:", error);
@@ -362,6 +363,11 @@ const Dashboard = () => {
   }>>([]);
 
   useEffect(() => {
+    if (!companyId) {
+      console.warn("Dashboard: Company ID not available, cannot fetch upcoming returns");
+      return;
+    }
+
     const fetchUpcomingReturns = async () => {
       try {
         const today = getAngolaDate();
@@ -385,7 +391,8 @@ const Dashboard = () => {
               cars (brand, model, license_plate),
               customers (name, phone)
             )
-          `);
+          `)
+          .eq("reservations.company_id", companyId);
 
         if (error) throw error;
 
@@ -395,20 +402,33 @@ const Dashboard = () => {
           daysUntil: number;
         }> = [];
 
-        for (const checkout of (checkouts || []) as Array<any>) {
-          const reservation = checkout.reservations as Reservation;
-          
-          // Verificar se não tem checkin
-          const { data: checkin } = await supabase
-            .from("checkins")
-            .select("id")
-            .eq("reservation_id", reservation.id)
-            .maybeSingle();
+        const checkoutsData = (checkouts || []) as Array<any>;
 
-          if (!checkin) {
+        if (checkoutsData.length > 0) {
+          const reservationIds = Array.from(
+            new Set(
+              checkoutsData
+                .map((c) => (c.reservations as Reservation)?.id)
+                .filter(Boolean)
+            )
+          );
+
+          const { data: checkinsForReturns } = await supabase
+            .from("checkins")
+            .select("reservation_id")
+            .in("reservation_id", reservationIds);
+
+          const reservationsWithCheckin = new Set(
+            (checkinsForReturns || []).map((c: any) => c.reservation_id)
+          );
+
+          for (const checkout of checkoutsData) {
+            const reservation = checkout.reservations as Reservation;
+            if (!reservation || reservationsWithCheckin.has(reservation.id)) continue;
+
             const endDate = parseAngolaDate(reservation.end_date);
             const daysUntil = differenceInDays(endDate, today);
-            
+
             // Se a data de retorno está entre 3 dias antes e 3 dias depois
             if (endDate >= threeDaysBefore && endDate <= threeDaysLater) {
               returnsData.push({
@@ -427,7 +447,7 @@ const Dashboard = () => {
     };
 
     fetchUpcomingReturns();
-  }, []);
+  }, [companyId]);
 
   // Notificações push
   useEffect(() => {
