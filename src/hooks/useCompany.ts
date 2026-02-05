@@ -1,145 +1,174 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getCurrentCompanyUser, getSubdomainFromHost, logoutCompanyUser } from "@/lib/authUtils";
+import type { Session, User } from "@supabase/supabase-js";
+
+const isDev = import.meta.env.DEV;
+
+function log(...args: unknown[]) {
+  if (isDev) console.log(...args);
+}
+
+function logWarn(...args: unknown[]) {
+  if (isDev) console.warn(...args);
+}
+
+function logError(...args: unknown[]) {
+  if (isDev) console.error(...args);
+}
+
+/** Debounce helper */
+function debounce<T extends (...args: Parameters<T>) => void>(fn: T, ms: number): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  return (...args: Parameters<T>) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      timeout = null;
+      fn(...args);
+    }, ms);
+  };
+}
 
 export function useCompany() {
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [subdomain, setSubdomain] = useState<string | null>(null);
+  const lastKnownCompanyIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const fetchCompanyId = async () => {
-      console.log("useCompany: Starting to fetch company ID...");
-      setLoading(true);
-      
+    let cancelled = false;
+
+    async function resolveCompanyFromUser(user: User): Promise<string | null> {
+      const companyUser = getCurrentCompanyUser();
+      if (companyUser) {
+        log("useCompany: Found both auth user and company_user. Clearing company_user to use user_profile.");
+        logoutCompanyUser();
+      }
+      const { data: profile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("company_id, is_active")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (profileError) {
+        logError("Error fetching user profile:", profileError);
+        return null;
+      }
+      if (profile) {
+        log("User profile found:", { company_id: profile.company_id, is_active: profile.is_active, user_id: user.id });
+        return profile.company_id;
+      }
+      logWarn("User profile not found for user:", user.id);
+      return null;
+    }
+
+    async function fetchCompanyId(sessionFromCallback: Session | null | undefined) {
+      const hasExistingCompany = lastKnownCompanyIdRef.current != null;
+      if (!hasExistingCompany) {
+        setLoading(true);
+      }
+
       try {
-             // 1. Primeiro, tentar detectar subdomain da URL
-             const detectedSubdomain = getSubdomainFromHost();
-             console.log("useCompany: Detected subdomain:", detectedSubdomain);
-             
-             if (detectedSubdomain) {
-               setSubdomain(detectedSubdomain);
-          
-          // Buscar company pelo subdomain usando função RPC (bypassa RLS)
-          console.log("useCompany: Searching company by subdomain via RPC:", detectedSubdomain);
-          const { data: companyData, error } = await supabase
-            .rpc('get_company_by_subdomain', { p_subdomain: detectedSubdomain });
-          
-          console.log("useCompany: Company by subdomain (RPC):", { 
-            company: companyData, 
-            error: error ? { message: error.message, code: error.code, details: error.details } : null 
+        const detectedSubdomain = getSubdomainFromHost();
+        log("useCompany: Detected subdomain:", detectedSubdomain);
+
+        if (detectedSubdomain) {
+          setSubdomain(detectedSubdomain);
+          const { data: companyData, error } = await supabase.rpc("get_company_by_subdomain", {
+            p_subdomain: detectedSubdomain,
           });
-          
+          log("useCompany: Company by subdomain (RPC):", {
+            company: companyData,
+            error: error ? { message: error.message } : null,
+          });
           if (error) {
-            console.error("useCompany: Error fetching company by subdomain:", error);
-            // Tentar método direto como fallback
             const { data: companyDirect, error: errorDirect } = await supabase
               .from("companies")
               .select("id")
               .eq("subdomain", detectedSubdomain)
               .maybeSingle();
-            
             if (companyDirect && !errorDirect) {
-              console.log("useCompany: Found company by subdomain (direct fallback):", companyDirect.id);
+              if (cancelled) return;
+              lastKnownCompanyIdRef.current = companyDirect.id;
               setCompanyId(companyDirect.id);
               setLoading(false);
               return;
             }
-          } else if (companyData && companyData.id) {
-            console.log("useCompany: Found company by subdomain:", companyData.id);
+          } else if (companyData?.id) {
+            if (cancelled) return;
+            lastKnownCompanyIdRef.current = companyData.id;
             setCompanyId(companyData.id);
             setLoading(false);
             return;
-          } else {
-            console.warn("useCompany: No company found for subdomain:", detectedSubdomain);
           }
         }
 
-        // 2. Verificar auth user primeiro (proprietário/admin)
-        console.log("useCompany: Checking auth user...");
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        
-        if (userError) {
-          console.error("useCompany: Error getting auth user:", userError);
+        let user: User | null = null;
+        if (sessionFromCallback !== undefined) {
+          user = sessionFromCallback?.user ?? null;
+        } else {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (cancelled) return;
+          user = session?.user ?? null;
         }
-        
-        console.log("useCompany: Auth user:", user ? { id: user.id, email: user.email } : null);
-        
-        // 3. Se não há auth user, verificar company_user logado
+
+        log("useCompany: Auth user:", user ? { id: user.id, email: user.email } : null);
+
         if (!user) {
           const companyUser = getCurrentCompanyUser();
-          console.log("useCompany: Company user from localStorage:", companyUser);
-          
+          log("useCompany: Company user from localStorage:", companyUser);
           if (companyUser) {
-            console.log("useCompany: Found company user (no auth user), using company_id:", companyUser.company_id);
+            if (cancelled) return;
+            lastKnownCompanyIdRef.current = companyUser.company_id;
             setCompanyId(companyUser.company_id);
             setLoading(false);
             return;
-          } else {
-            console.log("useCompany: No auth user and no company user found");
-            setCompanyId(null);
-            setLoading(false);
-            return;
           }
-        }
-        
-        // 4. Se há auth user, limpar company_user se existir (owner deve usar user_profile)
-        const companyUser = getCurrentCompanyUser();
-        if (companyUser) {
-          console.warn("useCompany: Found both auth user and company_user. Clearing company_user to use user_profile.");
-          logoutCompanyUser();
+          if (cancelled) return;
+          lastKnownCompanyIdRef.current = null;
+          setCompanyId(null);
+          setLoading(false);
+          return;
         }
 
-        const { data: profile, error: profileError } = await supabase
-          .from("user_profiles")
-          .select("company_id, is_active")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (profileError) {
-          console.error("Error fetching user profile:", profileError);
-          console.error("Profile error details:", JSON.stringify(profileError, null, 2));
-        }
-
-        if (profile) {
-          console.log("User profile found:", { 
-            company_id: profile.company_id, 
-            is_active: profile.is_active,
-            user_id: user.id 
-          });
-          setCompanyId(profile.company_id);
-        } else {
-          console.warn("User profile not found for user:", user.id);
-          console.warn("This may indicate a problem with RLS policies or the user profile was not created");
+        const resolvedId = await resolveCompanyFromUser(user);
+        if (cancelled) return;
+        if (resolvedId != null) {
+          lastKnownCompanyIdRef.current = resolvedId;
+          setCompanyId(resolvedId);
+        } else if (!lastKnownCompanyIdRef.current) {
+          setCompanyId(null);
         }
       } catch (error) {
-        console.error("Error fetching company ID:", error);
-        console.error("Error details:", JSON.stringify(error, null, 2));
-        setCompanyId(null);
+        logError("Error fetching company ID:", error);
+        if (cancelled) return;
+        if (!lastKnownCompanyIdRef.current) {
+          setCompanyId(null);
+        }
       } finally {
-        setLoading(false);
-        // Note: companyId aqui pode não estar atualizado ainda devido ao estado assíncrono
-        // O valor será atualizado no próximo render
+        if (!cancelled) setLoading(false);
       }
-    };
+    }
 
-    fetchCompanyId();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      fetchCompanyId();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled) return;
+      fetchCompanyId(session);
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    const debouncedRefetch = debounce((session: Session | null) => {
+      if (cancelled) return;
+      fetchCompanyId(session);
+    }, 400);
 
-  // Log quando companyId mudar
-  useEffect(() => {
-    console.log("useCompany: companyId changed:", companyId);
-    console.log("useCompany: loading:", loading);
-    console.log("useCompany: subdomain:", subdomain);
-  }, [companyId, loading, subdomain]);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (cancelled) return;
+      debouncedRefetch(session);
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   return { companyId, loading, subdomain };
 }
-
