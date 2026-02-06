@@ -1,0 +1,15 @@
+# MoFleet - Static Site (Vite + React SPA)
+# https://docs.render.com/blueprint-spec
+services:
+  - type: web
+    name: mofleet
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      # SPA: todas as rotas servem index.html para o React Router
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    # Variáveis de ambiente: configurar no Dashboard (Environment)
+    # VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY

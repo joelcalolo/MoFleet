@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { handleError, logError } from "@/lib/errorHandler";
-import { loginCompanyUser, getSubdomainFromHost, logoutCompanyUser } from "@/lib/authUtils";
+import { logoutCompanyUser } from "@/lib/authUtils";
 import { useCompanyUser } from "@/contexts/CompanyUserContext";
 
 const Auth = () => {
@@ -16,8 +16,6 @@ const Auth = () => {
   const [searchParams] = useSearchParams();
   const { setCompanyUser } = useCompanyUser();
   const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
-  const [subdomain, setSubdomain] = useState<string>("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -25,24 +23,11 @@ const Auth = () => {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
-  const [isCompanyUserLogin, setIsCompanyUserLogin] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [isResetPassword, setIsResetPassword] = useState(false);
   const [lastAttemptTime, setLastAttemptTime] = useState<number>(0);
 
   useEffect(() => {
-    // Detectar subdomain automaticamente
-    const detected = getSubdomainFromHost();
-    if (detected) {
-      setSubdomain(detected);
-      // Se estiver em um subdomain (e não for "www"), mostrar apenas login de company user
-      setIsCompanyUserLogin(true);
-    } else {
-      // Se estiver no domínio principal ou www, mostrar apenas login de proprietário
-      setIsCompanyUserLogin(false);
-      setSubdomain(""); // Limpar subdomain para garantir que não seja usado
-    }
-
     // Verificar se está no modo de redefinição de senha
     const mode = searchParams.get("mode");
     if (mode === "reset-password") {
@@ -140,14 +125,9 @@ const Auth = () => {
       return;
     }
 
-    if (isLogin && isCompanyUserLogin) {
-      if (!username || !password) {
-        toast.error("Por favor, preencha todos os campos");
-        return;
-      }
-    } else if (isLogin && !isCompanyUserLogin) {
+    if (isLogin) {
       if (!email || !password) {
-        toast.error("Por favor, preencha todos os campos");
+        toast.error("Por favor, preencha email e senha");
         return;
       }
     } else if (!email || !password) {
@@ -169,45 +149,19 @@ const Auth = () => {
 
     try {
       if (isLogin) {
-        // Login de usuário da empresa (subdomain + username/password)
-        if (isCompanyUserLogin) {
-          // Se não detectou subdomain automaticamente, verificar se foi preenchido
-          const subdomainToUse = subdomain || getSubdomainFromHost();
-          
-          if (!subdomainToUse) {
-            toast.error("Por favor, informe o código da empresa (subdomain)");
-            return;
-          }
+        // Login da empresa: apenas email e senha (conta proprietário)
+        logoutCompanyUser();
+        setCompanyUser(null);
 
-          if (!username || !password) {
-            toast.error("Por favor, preencha username e senha");
-            return;
-          }
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-          const companyUser = await loginCompanyUser(subdomainToUse, username, password);
-          if (!companyUser) {
-            toast.error("Código da empresa, username ou senha incorretos");
-            return;
-          }
-          setCompanyUser(companyUser);
-          toast.success("Login realizado com sucesso");
-          navigate("/dashboard");
-        } else {
-          // Login de proprietário (email/password)
-          // Limpar company_user do localStorage quando faz login como owner
-          logoutCompanyUser();
-          setCompanyUser(null);
-          
-          const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
+        if (error) throw error;
 
-          if (error) throw error;
-          
-          toast.success("Login realizado com sucesso");
-          navigate("/dashboard");
-        }
+        toast.success("Login realizado com sucesso");
+        navigate("/dashboard");
       } else {
         const { error } = await supabase.auth.signUp({
           email,
@@ -337,23 +291,7 @@ const Auth = () => {
                     />
                   </div>
                 )}
-                {isLogin && !isForgotPassword && !isCompanyUserLogin && (
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 rounded-lg mb-4">
-                    <p className="text-sm text-blue-800 dark:text-blue-200">
-                      💡 <strong>Login de Proprietário:</strong> Use este formulário para fazer login como proprietário da empresa com email e senha.
-                      Para fazer login como usuário da empresa, acesse o subdomain da sua empresa (ex: empresa1.mofleet.com).
-                    </p>
-                  </div>
-                )}
-                {isLogin && !isForgotPassword && isCompanyUserLogin && (
-                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 rounded-lg mb-4">
-                    <p className="text-sm text-green-800 dark:text-green-200">
-                      🔐 <strong>Login de Usuário da Empresa:</strong> Você está acessando o subdomain da empresa. 
-                      Faça login com seu username e senha.
-                    </p>
-                  </div>
-                )}
-                {isLogin && !isForgotPassword && !isCompanyUserLogin && (
+                {isLogin && !isForgotPassword && (
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
                     <Input
@@ -366,54 +304,6 @@ const Auth = () => {
                       required
                     />
                   </div>
-                )}
-                {isLogin && !isForgotPassword && isCompanyUserLogin && (
-                  <>
-                    {subdomain ? (
-                      <div className="space-y-2">
-                        <Label htmlFor="subdomain">Código da Empresa</Label>
-                        <Input
-                          id="subdomain"
-                          type="text"
-                          value={subdomain}
-                          onChange={(e) => setSubdomain(e.target.value)}
-                          disabled={loading}
-                          required
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Detectado automaticamente do endereço: {window.location.hostname}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <Label htmlFor="subdomain">Código da Empresa *</Label>
-                        <Input
-                          id="subdomain"
-                          type="text"
-                          placeholder="codigo-empresa"
-                          value={subdomain}
-                          onChange={(e) => setSubdomain(e.target.value)}
-                          disabled={loading}
-                          required
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          O código da empresa é o subdomain (ex: empresa1.mofleet.com → código: empresa1)
-                        </p>
-                      </div>
-                    )}
-                    <div className="space-y-2">
-                      <Label htmlFor="username">Username</Label>
-                      <Input
-                        id="username"
-                        type="text"
-                        placeholder="nomeusuario"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        disabled={loading}
-                        required
-                      />
-                    </div>
-                  </>
                 )}
                 {!isLogin && !isForgotPassword && (
                   <div className="space-y-2">

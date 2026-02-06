@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { getCurrentCompanyUser, getSubdomainFromHost, logoutCompanyUser } from "@/lib/authUtils";
+import { getCurrentCompanyUser, logoutCompanyUser } from "@/lib/authUtils";
 import type { Session, User } from "@supabase/supabase-js";
 
 const isDev = import.meta.env.DEV;
@@ -68,40 +68,7 @@ export function useCompany() {
       }
 
       try {
-        const detectedSubdomain = getSubdomainFromHost();
-        log("useCompany: Detected subdomain:", detectedSubdomain);
-
-        if (detectedSubdomain) {
-          setSubdomain(detectedSubdomain);
-          const { data: companyData, error } = await supabase.rpc("get_company_by_subdomain", {
-            p_subdomain: detectedSubdomain,
-          });
-          log("useCompany: Company by subdomain (RPC):", {
-            company: companyData,
-            error: error ? { message: error.message } : null,
-          });
-          if (error) {
-            const { data: companyDirect, error: errorDirect } = await supabase
-              .from("companies")
-              .select("id")
-              .eq("subdomain", detectedSubdomain)
-              .maybeSingle();
-            if (companyDirect && !errorDirect) {
-              if (cancelled) return;
-              lastKnownCompanyIdRef.current = companyDirect.id;
-              setCompanyId(companyDirect.id);
-              setLoading(false);
-              return;
-            }
-          } else if (companyData?.id) {
-            if (cancelled) return;
-            lastKnownCompanyIdRef.current = companyData.id;
-            setCompanyId(companyData.id);
-            setLoading(false);
-            return;
-          }
-        }
-
+        // Resolução por URL/subdomain desativada: apenas sessão (email/senha) ou company_user em localStorage
         let user: User | null = null;
         if (sessionFromCallback !== undefined) {
           user = sessionFromCallback?.user ?? null;
