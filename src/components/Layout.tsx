@@ -53,20 +53,31 @@ const Layout = ({ children }: LayoutProps) => {
   }, [navigate, location.pathname]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const checkSuperAdmin = async () => {
-      if (user) {
+      if (user?.id) {
         const { data: profile } = await supabase
           .from("user_profiles")
           .select("role")
           .eq("user_id", user.id)
           .maybeSingle();
-        setIsSuperAdmin(profile?.role === 'super_admin');
+        if (!cancelled) {
+          setIsSuperAdmin(profile?.role === 'super_admin');
+        }
       } else {
-        setIsSuperAdmin(false);
+        if (!cancelled) {
+          setIsSuperAdmin(false);
+        }
       }
     };
+
     checkSuperAdmin();
-  }, [user]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]); // Depender apenas de user?.id em vez de user inteiro
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
