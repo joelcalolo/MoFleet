@@ -357,20 +357,7 @@ const Auth = () => {
                     ? "Entrar" 
                     : "Criar Conta"}
                 </Button>
-                {!isForgotPassword && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full"
-                    onClick={() => {
-                      setIsLogin(!isLogin);
-                      setAcceptedTerms(false);
-                    }}
-                    disabled={loading}
-                  >
-                    {isLogin ? "Criar nova conta" : "Já tenho uma conta"}
-                  </Button>
-                )}
+                {/* Opção "Criar conta" oculta na UI */}
                 {isLogin && !isForgotPassword && (
                   <Button
                     type="button"

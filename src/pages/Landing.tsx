@@ -123,13 +123,6 @@ const Landing = () => {
             <Button variant="ghost" onClick={() => navigate("/auth")} className="font-medium text-xs sm:text-sm px-2 sm:px-4">
               Entrar
             </Button>
-            <Button 
-              variant="hero"
-              onClick={() => navigate("/auth")}
-              className="font-medium text-xs sm:text-sm px-2 sm:px-4"
-            >
-              Criar Conta
-            </Button>
           </div>
         </div>
       </header>
@@ -150,18 +143,10 @@ const Landing = () => {
               size="lg" 
               variant="hero"
               onClick={() => navigate("/auth")}
-              className="font-semibold px-8 py-3 hover:scale-105"
-            >
-              Criar Conta
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-            <Button 
-              size="lg" 
-              variant="outline" 
-              onClick={() => navigate("/auth")}
               className="font-semibold px-8 py-3 border-2 hover:scale-105 transition-all duration-300"
             >
               Fazer Login
+              <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </div>
         </div>
@@ -305,7 +290,7 @@ const Landing = () => {
             Comece a Gerenciar sua Frota Hoje
           </h3>
           <p className="text-base sm:text-lg md:text-xl text-muted-foreground mb-6 sm:mb-10 leading-relaxed px-4">
-            Crie sua conta e comece a organizar suas reservas, veículos e clientes de forma profissional.
+            Faça login e comece a organizar suas reservas, veículos e clientes de forma profissional.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <Button 
@@ -314,16 +299,8 @@ const Landing = () => {
               onClick={() => navigate("/auth")}
               className="font-semibold px-8 py-4 text-lg hover:scale-105"
             >
-              Criar Conta
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
-            <Button 
-              size="lg" 
-              variant="outline" 
-              onClick={() => navigate("/auth")}
-              className="font-semibold px-8 py-4 text-lg border-2 hover:scale-105 transition-all duration-300"
-            >
               Fazer Login
+              <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
             {showInstallButton && (
               <Button 
