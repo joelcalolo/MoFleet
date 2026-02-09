@@ -3,13 +3,11 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { Car, Calendar, Users, LayoutDashboard, LogOut, UserCircle, Settings, Truck, FileText, ChevronLeft, ChevronRight, Menu, UserCog } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Car, Calendar, Users, LayoutDashboard, LogOut, UserCircle, Settings, Truck, FileText, ChevronLeft, ChevronRight, Menu, Package, Warehouse, ShoppingCart, ArrowDownCircle, ArrowUpCircle, ClipboardCheck, Wrench, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useCompanyUser } from "@/contexts/CompanyUserContext";
-import { getCurrentCompanyUser } from "@/lib/authUtils";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface LayoutProps {
   children: ReactNode;
@@ -22,8 +20,8 @@ const Layout = ({ children }: LayoutProps) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [stockMenuOpen, setStockMenuOpen] = useState(false);
   const isMobile = useIsMobile();
-  const { companyUser, isGerente, logout: logoutCompanyUser } = useCompanyUser();
 
   useEffect(() => {
     let cancelled = false;
@@ -33,10 +31,7 @@ const Layout = ({ children }: LayoutProps) => {
       setUser(session?.user ?? null);
       const publicPaths = ["/", "/auth", "/terms", "/privacy"];
       const onPublicPath = publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"));
-      // Usar getCurrentCompanyUser() no momento da decisão para evitar closure obsoleta
-      // (em refresh, companyUser do context pode ainda ser null quando o callback roda).
-      const currentCompanyUser = getCurrentCompanyUser();
-      if (!session && !currentCompanyUser && !onPublicPath) {
+      if (!session && !onPublicPath) {
         navigate("/auth");
       }
     });
@@ -46,8 +41,7 @@ const Layout = ({ children }: LayoutProps) => {
       setUser(session?.user ?? null);
       const publicPaths = ["/", "/auth", "/terms", "/privacy"];
       const onPublicPath = publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"));
-      const currentCompanyUser = getCurrentCompanyUser();
-      if (!session && !currentCompanyUser && !onPublicPath) {
+      if (!session && !onPublicPath) {
         navigate("/auth");
       }
     });
@@ -60,7 +54,7 @@ const Layout = ({ children }: LayoutProps) => {
 
   useEffect(() => {
     const checkSuperAdmin = async () => {
-      if (user && !companyUser) {
+      if (user) {
         const { data: profile } = await supabase
           .from("user_profiles")
           .select("role")
@@ -72,30 +66,49 @@ const Layout = ({ children }: LayoutProps) => {
       }
     };
     checkSuperAdmin();
-  }, [user, companyUser]);
+  }, [user]);
 
   const handleLogout = async () => {
-    // Se for company_user, apenas fazer logout do company_user
-    if (companyUser) {
-      logoutCompanyUser();
-    } else {
-      await supabase.auth.signOut();
-    }
+    await supabase.auth.signOut();
     navigate("/auth");
   };
 
-  const menuItems = [
+  // Menu principal - Reservas em destaque
+  const mainMenuItems = [
     { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
+    { icon: UserCircle, label: "Reservas", path: "/reservations", highlight: true },
     { icon: Calendar, label: "Agenda", path: "/schedule" },
     { icon: Car, label: "Carros", path: "/cars" },
     { icon: Users, label: "Clientes", path: "/customers" },
-    { icon: UserCircle, label: "Reservas", path: "/reservations" },
     { icon: Truck, label: "Frota", path: "/fleet" },
     { icon: FileText, label: "Resumo de Alugueres", path: "/rentals-summary" },
+    { icon: Package, label: "Stock", path: "/inventory" },
   ];
 
-  // Permitir acesso se houver user ou companyUser
-  if (!user && !companyUser) return null;
+  // Submenu de gestão de stock
+  const stockManagementItems = [
+    { icon: Warehouse, label: "Fornecedores", path: "/inventory/suppliers" },
+    { icon: ClipboardCheck, label: "Categorias", path: "/inventory/categories" },
+    { icon: ShoppingCart, label: "Peças", path: "/inventory/parts" },
+    { icon: ArrowDownCircle, label: "Entradas", path: "/inventory/entries" },
+    { icon: ArrowUpCircle, label: "Saídas", path: "/inventory/exits" },
+    { icon: Wrench, label: "Ajustes", path: "/inventory/adjustments" },
+  ];
+
+  // Verificar se alguma rota de gestão de stock está ativa
+  const isStockManagementActive = stockManagementItems.some(
+    item => location.pathname === item.path || location.pathname.startsWith(item.path + "/")
+  );
+
+  // Abrir submenu de gestão de stock automaticamente se estivermos em uma página de gestão
+  useEffect(() => {
+    if (isStockManagementActive) {
+      setStockMenuOpen(true);
+    }
+  }, [location.pathname, isStockManagementActive]);
+
+  // Permitir acesso apenas se houver user autenticado
+  if (!user) return null;
 
   const sidebarWidth = sidebarCollapsed ? "w-16" : "w-64";
 
@@ -119,13 +132,14 @@ const Layout = ({ children }: LayoutProps) => {
                   </div>
                 </div>
                 <nav className="flex-1 overflow-y-auto space-y-2 p-4">
-                  {menuItems.map((item) => (
+                  {mainMenuItems.map((item) => (
                     <Button
                       key={item.path}
                       variant={location.pathname === item.path ? "secondary" : "ghost"}
                       className={cn(
                         "w-full justify-start",
-                        location.pathname === item.path && "bg-secondary"
+                        location.pathname === item.path && "bg-secondary",
+                        item.highlight && "font-semibold"
                       )}
                       onClick={() => {
                         navigate(item.path);
@@ -136,15 +150,52 @@ const Layout = ({ children }: LayoutProps) => {
                       {item.label}
                     </Button>
                   ))}
+                  
+                  {/* Submenu Gerir Stock no Mobile */}
+                  <Collapsible open={stockMenuOpen} onOpenChange={setStockMenuOpen}>
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant={isStockManagementActive ? "secondary" : "ghost"}
+                        className={cn(
+                          "w-full justify-start",
+                          isStockManagementActive && "bg-secondary"
+                        )}
+                      >
+                        <Wrench className="h-4 w-4 mr-2" />
+                        Gerir Stock
+                        {stockMenuOpen ? (
+                          <ChevronUp className="h-4 w-4 ml-auto" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 ml-auto" />
+                        )}
+                      </Button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="pl-4 space-y-1 mt-1">
+                        {stockManagementItems.map((item) => (
+                          <Button
+                            key={item.path}
+                            variant={location.pathname === item.path ? "secondary" : "ghost"}
+                            className={cn(
+                              "w-full justify-start text-sm",
+                              location.pathname === item.path && "bg-secondary"
+                            )}
+                            onClick={() => {
+                              navigate(item.path);
+                              setMobileMenuOpen(false);
+                            }}
+                          >
+                            <item.icon className="h-3 w-3 mr-2" />
+                            {item.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                 </nav>
                 <div className="p-4 border-t border-border bg-card">
                   <div className="mb-2 text-xs text-muted-foreground truncate">
-                    {companyUser ? companyUser.username : user?.email || ""}
-                    {companyUser && (
-                      <Badge variant="secondary" className="ml-2 text-xs">
-                        {companyUser.role === "gerente" ? "Gerente" : "Técnico"}
-                      </Badge>
-                    )}
+                    {user?.email || ""}
                   </div>
                   <div className="space-y-2">
                     <Button
@@ -161,22 +212,6 @@ const Layout = ({ children }: LayoutProps) => {
                       <Settings className="h-4 w-4 mr-2" />
                       Configurações
                     </Button>
-                    {!companyUser && user && isSuperAdmin && (
-                      <Button
-                        variant={location.pathname === "/company-users" ? "secondary" : "outline"}
-                        className={cn(
-                          "w-full justify-start",
-                          location.pathname === "/company-users" && "bg-secondary"
-                        )}
-                        onClick={() => {
-                          navigate("/company-users");
-                          setMobileMenuOpen(false);
-                        }}
-                      >
-                        <UserCog className="h-4 w-4 mr-2" />
-                        Usuários da Empresa
-                      </Button>
-                    )}
                     <Button
                       variant="outline"
                       className="w-full justify-start"
@@ -242,14 +277,15 @@ const Layout = ({ children }: LayoutProps) => {
             "flex-1 overflow-y-auto space-y-2",
             sidebarCollapsed ? "p-2" : "p-4"
           )}>
-            {menuItems.map((item) => (
+            {mainMenuItems.map((item) => (
               <Button
                 key={item.path}
                 variant={location.pathname === item.path ? "secondary" : "ghost"}
                 className={cn(
                   "w-full",
                   sidebarCollapsed ? "justify-center px-0" : "justify-start",
-                  location.pathname === item.path && "bg-secondary"
+                  location.pathname === item.path && "bg-secondary",
+                  item.highlight && !sidebarCollapsed && "font-semibold"
                 )}
                 onClick={() => navigate(item.path)}
                 title={sidebarCollapsed ? item.label : undefined}
@@ -267,15 +303,63 @@ const Layout = ({ children }: LayoutProps) => {
           )}>
             {!sidebarCollapsed && (
               <div className="mb-2 text-xs text-muted-foreground truncate">
-                {companyUser ? companyUser.username : user?.email || ""}
-                {companyUser && (
-                  <Badge variant="secondary" className="ml-2 text-xs">
-                    {companyUser.role === "gerente" ? "Gerente" : "Técnico"}
-                  </Badge>
-                )}
+                {user?.email || ""}
               </div>
             )}
             <div className="space-y-2">
+              {/* Submenu Gerir Stock */}
+              {!sidebarCollapsed ? (
+                <Collapsible open={stockMenuOpen} onOpenChange={setStockMenuOpen}>
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      variant={isStockManagementActive ? "secondary" : "outline"}
+                      className={cn(
+                        "w-full justify-start",
+                        isStockManagementActive && "bg-secondary"
+                      )}
+                    >
+                      <Wrench className="h-4 w-4 mr-2" />
+                      Gerir Stock
+                      {stockMenuOpen ? (
+                        <ChevronUp className="h-4 w-4 ml-auto" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 ml-auto" />
+                      )}
+                    </Button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="pl-4 space-y-1 mt-1">
+                      {stockManagementItems.map((item) => (
+                        <Button
+                          key={item.path}
+                          variant={location.pathname === item.path ? "secondary" : "ghost"}
+                          className={cn(
+                            "w-full justify-start text-sm",
+                            location.pathname === item.path && "bg-secondary"
+                          )}
+                          onClick={() => navigate(item.path)}
+                        >
+                          <item.icon className="h-3 w-3 mr-2" />
+                          {item.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : (
+                <Button
+                  variant={isStockManagementActive ? "secondary" : "outline"}
+                  className={cn(
+                    "w-full justify-center px-0",
+                    isStockManagementActive && "bg-secondary"
+                  )}
+                  onClick={() => navigate("/inventory/suppliers")}
+                  title="Gerir Stock"
+                >
+                  <Wrench className="h-4 w-4" />
+                </Button>
+              )}
+              
               <Button
                 variant={location.pathname === "/settings" ? "secondary" : "outline"}
                 className={cn(
@@ -289,21 +373,6 @@ const Layout = ({ children }: LayoutProps) => {
                 <Settings className={cn("h-4 w-4", !sidebarCollapsed && "mr-2")} />
                 {!sidebarCollapsed && "Configurações"}
               </Button>
-              {!companyUser && user && isSuperAdmin && (
-                <Button
-                  variant={location.pathname === "/company-users" ? "secondary" : "outline"}
-                  className={cn(
-                    "w-full",
-                    sidebarCollapsed ? "justify-center px-0" : "justify-start",
-                    location.pathname === "/company-users" && "bg-secondary"
-                  )}
-                  onClick={() => navigate("/company-users")}
-                  title={sidebarCollapsed ? "Usuários" : undefined}
-                >
-                  <UserCog className={cn("h-4 w-4", !sidebarCollapsed && "mr-2")} />
-                  {!sidebarCollapsed && "Usuários da Empresa"}
-                </Button>
-              )}
               <Button
                 variant="outline"
                 className={cn(

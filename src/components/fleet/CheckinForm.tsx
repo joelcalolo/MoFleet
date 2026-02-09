@@ -7,8 +7,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Reservation } from "@/pages/Reservations";
-import { useCompany } from "@/hooks/useCompany";
-import { useCompanyUser } from "@/contexts/CompanyUserContext";
 import { 
   formatAngolaDate, 
   parseAngolaDate, 
@@ -35,8 +33,6 @@ interface CheckinFormProps {
 
 export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: CheckinFormProps) => {
   const [loading, setLoading] = useState(false);
-  const { companyId } = useCompany();
-  const { companyUser } = useCompanyUser();
   
   // Inicializar com data/hora atual
   const now = new Date();
@@ -144,11 +140,6 @@ export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: Check
       return;
     }
 
-    if (!companyId) {
-      toast.error("Erro: Empresa não encontrada");
-      return;
-    }
-
     setLoading(true);
 
     try {
@@ -203,9 +194,7 @@ export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: Check
       };
 
       // Registrar quem fez a ação (auditoria)
-      if (companyUser) {
-        checkinData.created_by_company_user_id = companyUser.id;
-      } else if (authUser) {
+      if (authUser) {
         checkinData.created_by_user_id = authUser.id;
       }
 
@@ -246,10 +235,6 @@ export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: Check
           : kmNote;
       }
 
-      // Adicionar company_id apenas se disponível (após migration)
-      if (companyId) {
-        checkinData.company_id = companyId;
-      }
 
       const { error: checkinError } = await supabase
         .from("checkins")

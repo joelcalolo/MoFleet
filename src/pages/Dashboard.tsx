@@ -11,8 +11,6 @@ import { Reservation } from "@/pages/Reservations";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { parseAngolaDate, getAngolaDate, formatAngolaDate, isSameAngolaDay } from "@/lib/dateUtils";
-import { useCompanyUser } from "@/contexts/CompanyUserContext";
-import { useCompany } from "@/hooks/useCompany";
 
 interface Stats {
   activeReservations: number;
@@ -41,8 +39,6 @@ const CAR_COLORS = [
 ];
 
 const Dashboard = () => {
-  const { isGerente } = useCompanyUser();
-  const { companyId, loading: companyLoading } = useCompany();
   const [stats, setStats] = useState<Stats>({
     activeReservations: 0,
     availableCars: 0,
@@ -61,46 +57,29 @@ const Dashboard = () => {
   const [expandedAlerts, setExpandedAlerts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    console.log("Dashboard: useEffect triggered", { companyId, companyLoading });
-    if (companyId && !companyLoading) {
-      console.log("Dashboard: Fetching stats and reservations for company:", companyId);
-      fetchStats();
-      fetchReservations();
-    } else {
-      console.log("Dashboard: Waiting for companyId or still loading", { companyId, companyLoading });
-    }
-  }, [companyId, companyLoading]);
+    fetchStats();
+    fetchReservations();
+  }, []);
 
   const fetchStats = async () => {
-    if (!companyId) {
-      console.warn("Dashboard: Company ID not available, cannot fetch stats");
-      return;
-    }
-
-    console.log("Dashboard: fetchStats started for company:", companyId);
     setLoading(true);
 
     try {
       const today = getAngolaDate();
-      console.log("Dashboard: Fetching data for company:", companyId);
 
       const [reservationsRes, carsRes, customersRes, checkoutsRes] = await Promise.all([
         supabase
           .from("reservations")
-          .select("total_amount, status, end_date")
-          .eq("company_id", companyId),
+          .select("total_amount, status, end_date"),
         supabase
           .from("cars")
-          .select("id, is_available")
-          .eq("company_id", companyId),
+          .select("id, is_available"),
         supabase
           .from("customers")
-          .select("id, is_active")
-          .eq("company_id", companyId),
+          .select("id, is_active"),
         supabase
           .from("checkouts")
-          .select("id, reservation_id")
-          .eq("company_id", companyId),
+          .select("id, reservation_id"),
       ]);
 
       console.log("Dashboard: Data fetched:", {
@@ -205,12 +184,6 @@ const Dashboard = () => {
   };
 
   const fetchReservations = async () => {
-    if (!companyId) {
-      console.warn("Dashboard: Company ID not available, cannot fetch reservations");
-      return;
-    }
-
-    console.log("Dashboard: fetchReservations started for company:", companyId);
     setReservationsLoading(true);
 
     try {
@@ -221,7 +194,6 @@ const Dashboard = () => {
           cars (brand, model, license_plate),
           customers (name, phone)
         `)
-        .eq("company_id", companyId)
         .order("start_date", { ascending: false });
 
       console.log("Dashboard: Reservations fetched:", {
@@ -363,11 +335,6 @@ const Dashboard = () => {
   }>>([]);
 
   useEffect(() => {
-    if (!companyId) {
-      console.warn("Dashboard: Company ID not available, cannot fetch upcoming returns");
-      return;
-    }
-
     const fetchUpcomingReturns = async () => {
       try {
         const today = getAngolaDate();
@@ -391,8 +358,7 @@ const Dashboard = () => {
               cars (brand, model, license_plate),
               customers (name, phone)
             )
-          `)
-          .eq("reservations.company_id", companyId);
+          `);
 
         if (error) throw error;
 
@@ -447,7 +413,7 @@ const Dashboard = () => {
     };
 
     fetchUpcomingReturns();
-  }, [companyId]);
+  }, []);
 
   // Notificações push
   useEffect(() => {
@@ -503,14 +469,13 @@ const Dashboard = () => {
       color: "text-purple-600",
       bgColor: "bg-purple-50 dark:bg-purple-950",
     },
-    // Mostrar receita apenas para gerentes
-    ...(isGerente ? [{
+    {
       title: "Receita Total",
       value: `${stats.totalRevenue.toLocaleString("pt-AO", { style: "currency", currency: "AOA", minimumFractionDigits: 0 })}`,
       icon: DollarSign,
       color: "text-green-600",
       bgColor: "bg-green-50 dark:bg-green-950",
-    }] : []),
+    },
     {
       title: "Reservas Concluídas",
       value: stats.completedReservations,
@@ -535,26 +500,7 @@ const Dashboard = () => {
           <p className="text-sm sm:text-base text-muted-foreground">Visão geral do sistema de reservas</p>
         </div>
 
-        {companyLoading ? (
-          <div className="text-center py-8 text-muted-foreground">
-            Carregando dados da empresa...
-          </div>
-        ) : !companyId ? (
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Empresa não encontrada</AlertTitle>
-            <AlertDescription>
-              Não foi possível carregar os dados da sua empresa. Por favor, verifique se você está logado corretamente ou entre em contato com o suporte.
-              <br />
-              <br />
-              <strong>Debug Info:</strong>
-              <br />
-              Company ID: {companyId || "null"}
-              <br />
-              Company Loading: {companyLoading ? "true" : "false"}
-            </AlertDescription>
-          </Alert>
-        ) : loading ? (
+        {loading ? (
           <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <Card key={i} className="animate-pulse">

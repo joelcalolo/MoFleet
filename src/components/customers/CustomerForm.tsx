@@ -7,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Customer } from "@/pages/Customers";
 import { useCompany } from "@/hooks/useCompany";
-import { useCompanyUser } from "@/contexts/CompanyUserContext";
 import { handleError, logError } from "@/lib/errorHandler";
 
 interface CustomerFormProps {
@@ -17,8 +16,6 @@ interface CustomerFormProps {
 
 export const CustomerForm = ({ customer, onClose }: CustomerFormProps) => {
   const [loading, setLoading] = useState(false);
-  const { companyId } = useCompany();
-  const { companyUser } = useCompanyUser();
   const [formData, setFormData] = useState({
     name: customer?.name || "",
     phone: customer?.phone || "",
@@ -56,12 +53,7 @@ export const CustomerForm = ({ customer, onClose }: CustomerFormProps) => {
         if (error) throw error;
         toast.success("Cliente atualizado com sucesso");
       } else {
-        if (!companyId) {
-          toast.error("Erro: Empresa não encontrada");
-          return;
-        }
-
-        const { error } = await supabase.from("customers").insert([{ ...dataToSave, company_id: companyId }]);
+        const { error } = await supabase.from("customers").insert([dataToSave]);
 
         if (error) throw error;
         toast.success("Cliente cadastrado com sucesso");

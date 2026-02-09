@@ -11,8 +11,6 @@ import { Reservation } from "@/pages/Reservations";
 import { Car } from "@/pages/Cars";
 import { Customer } from "@/pages/Customers";
 import { parseAngolaDate, formatAngolaDate } from "@/lib/dateUtils";
-import { useCompany } from "@/hooks/useCompany";
-import { useCompanyUser } from "@/contexts/CompanyUserContext";
 import { handleError, logError } from "@/lib/errorHandler";
 
 interface ReservationFormProps {
@@ -26,8 +24,6 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCar, setSelectedCar] = useState<Car | null>(null);
   const [overlapError, setOverlapError] = useState<string | null>(null);
-  const { companyId } = useCompany();
-  const { companyUser } = useCompanyUser();
   
   const [formData, setFormData] = useState({
     car_id: reservation?.car_id || "",
@@ -224,12 +220,8 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
       };
 
       // Registrar quem fez a ação (auditoria) - apenas ao criar nova reserva
-      if (!reservation) {
-        if (companyUser) {
-          dataToSave.created_by_company_user_id = companyUser.id;
-        } else if (authUser) {
-          dataToSave.created_by_user_id = authUser.id;
-        }
+      if (!reservation && authUser) {
+        dataToSave.created_by_user_id = authUser.id;
       }
 
       // Adicionar campos opcionais apenas se a migration foi aplicada
@@ -263,13 +255,7 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
         }
         toast.success("Reserva atualizada com sucesso");
       } else {
-        if (!companyId) {
-          toast.error("Erro: Empresa não encontrada");
-          setLoading(false);
-          return;
-        }
-
-        const { error } = await supabase.from("reservations").insert([{ ...dataToSave, company_id: companyId }]);
+        const { error } = await supabase.from("reservations").insert([dataToSave]);
 
         if (error) {
           // Se o erro for sobre colunas que não existem, tentar novamente sem elas
@@ -278,7 +264,7 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
             delete dataToSave.with_pickup;
             const { error: retryError } = await supabase
               .from("reservations")
-              .insert([{ ...dataToSave, company_id: companyId }]);
+              .insert([dataToSave]);
             if (retryError) throw retryError;
           } else {
             throw error;

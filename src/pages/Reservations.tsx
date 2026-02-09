@@ -11,7 +11,6 @@ import { format, eachDayOfInterval, startOfMonth, endOfMonth, addMonths, startOf
 import { ptBR } from "date-fns/locale";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { parseAngolaDate, getAngolaDate, formatAngolaDate, isSameAngolaDay } from "@/lib/dateUtils";
-import { useCompany } from "@/hooks/useCompany";
 
 export interface Reservation {
   id: string;
@@ -55,7 +54,6 @@ const CAR_COLORS = [
 ];
 
 const Reservations = () => {
-  const { companyId, loading: companyLoading } = useCompany();
   const [searchParams, setSearchParams] = useSearchParams();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,10 +62,8 @@ const Reservations = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   useEffect(() => {
-    if (!companyLoading && companyId) {
-      fetchReservations();
-    }
-  }, [companyId, companyLoading]);
+    fetchReservations();
+  }, []);
 
   // Verificar se há um ID de reserva na URL para editar
   useEffect(() => {
@@ -83,11 +79,6 @@ const Reservations = () => {
   }, [searchParams, reservations, setSearchParams]);
 
   const fetchReservations = async () => {
-    if (!companyId) {
-      console.warn("Reservations: Company ID not available, cannot fetch reservations");
-      return;
-    }
-
     try {
       const { data, error } = await supabase
         .from("reservations")
@@ -96,7 +87,6 @@ const Reservations = () => {
           cars (brand, model, license_plate),
           customers (name, phone)
         `)
-        .eq("company_id", companyId)
         .order("start_date", { ascending: false });
 
       if (error) throw error;

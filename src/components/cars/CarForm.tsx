@@ -18,7 +18,6 @@ interface CarFormProps {
 
 export const CarForm = ({ car, onClose }: CarFormProps) => {
   const [loading, setLoading] = useState(false);
-  const { companyId } = useCompany();
   const [formData, setFormData] = useState({
     brand: car?.brand || "",
     model: car?.model || "",
@@ -55,22 +54,9 @@ export const CarForm = ({ car, onClose }: CarFormProps) => {
         if (error) throw error;
         toast.success("Carro atualizado com sucesso");
       } else {
-        if (!companyId) {
-          toast.error("Erro: Empresa não encontrada");
-          console.error("CarForm: companyId is null, cannot insert car");
-          return;
-        }
-
-        const insertData = { ...formData, company_id: companyId };
-        console.log("CarForm: Inserting car with data:", {
-          ...insertData,
-          company_id: companyId,
-          hasCompanyId: !!companyId
-        });
-
         const { data, error } = await supabase
           .from("cars")
-          .insert([insertData])
+          .insert([formData])
           .select();
 
         if (error) {

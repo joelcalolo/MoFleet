@@ -8,13 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { handleError, logError } from "@/lib/errorHandler";
-import { logoutCompanyUser } from "@/lib/authUtils";
-import { useCompanyUser } from "@/contexts/CompanyUserContext";
 
 const Auth = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { setCompanyUser } = useCompanyUser();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -149,10 +146,6 @@ const Auth = () => {
 
     try {
       if (isLogin) {
-        // Login da empresa: apenas email e senha (conta proprietário)
-        logoutCompanyUser();
-        setCompanyUser(null);
-
         const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -176,29 +169,6 @@ const Auth = () => {
 
         if (error) throw error;
         
-        // Aguardar um pouco para o trigger processar
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Aguardar mais um pouco para garantir que o trigger processou
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Verificar se tem credenciais para mostrar na página de boas-vindas
-        const { data: { user: newUser } } = await supabase.auth.getUser();
-        if (newUser) {
-          const { data: credentialsData } = await supabase
-            .from("company_setup_credentials")
-            .select("subdomain, admin_username, admin_password, shown")
-            .eq("user_id", newUser.id)
-            .single();
-          
-          if (credentialsData && !credentialsData.shown) {
-            // Redirecionar para página de boas-vindas
-            navigate("/welcome");
-            return;
-          }
-        }
-        
-        // Se não tem credenciais, redirecionar para página de confirmação
         navigate("/auth/confirm", { state: { email } });
       }
     } catch (error: any) {
