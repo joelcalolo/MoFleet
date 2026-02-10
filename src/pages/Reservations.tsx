@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, withSupabaseLimit } from "@/lib/supabaseSafe";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
@@ -80,38 +80,44 @@ const Reservations = () => {
 
   const fetchReservations = async () => {
     try {
-      const { data, error } = await supabase
-        .from("reservations")
-        .select(`
-          *,
-          cars (brand, model, license_plate),
-          customers (name, phone)
-        `)
-        .order("start_date", { ascending: false });
+      // 1) Buscar todas as reservas com carros e clientes
+      const { data, error } = (await withSupabaseLimit(() =>
+        supabase
+          .from("reservations")
+          .select(`
+            *,
+            cars (brand, model, license_plate),
+            customers (name, phone)
+          `)
+          .order("start_date", { ascending: false })
+      )) as any;
 
       if (error) throw error;
-      
-      // Filtrar reservas que já têm checkin (não devem aparecer no calendário)
-      const reservationsWithCheckin = new Set<string>();
-      const reservationsData = data as Reservation[] || [];
-      
-      for (const reservation of reservationsData) {
-        const { data: checkin } = await supabase
-          .from("checkins")
-          .select("id")
-          .eq("reservation_id", reservation.id)
-          .maybeSingle();
-        
-        if (checkin) {
-          reservationsWithCheckin.add(reservation.id);
-        }
+
+      const reservationsData = (data as Reservation[]) || [];
+      if (reservationsData.length === 0) {
+        setReservations([]);
+        return;
       }
-      
-      // Remover reservas com checkin da lista
+
+      // 2) Buscar TODOS os checkins de uma vez usando IN, para evitar N+1
+      const reservationIds = reservationsData.map(r => r.id);
+      const { data: checkinsList } = (await withSupabaseLimit(() =>
+        supabase
+          .from("checkins")
+          .select("reservation_id")
+          .in("reservation_id", reservationIds)
+      )) as any;
+
+      const reservationsWithCheckin = new Set<string>(
+        (checkinsList || []).map((c: any) => c.reservation_id)
+      );
+
+      // 3) Remover reservas que já têm checkin
       const filteredReservations = reservationsData.filter(
         r => !reservationsWithCheckin.has(r.id)
       );
-      
+
       setReservations(filteredReservations);
     } catch (error) {
       console.error("Error fetching reservations:", error);
