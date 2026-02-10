@@ -90,7 +90,7 @@ const RentalsSummary = () => {
 
   const fetchRentals = async () => {
     try {
-      // Buscar todos os checkouts com suas reservas
+      // 1) Buscar todos os checkouts com suas reservas
       const { data: checkouts, error: checkoutError } = await supabase
         .from("checkouts")
         .select(`
@@ -111,86 +111,80 @@ const RentalsSummary = () => {
 
       if (checkoutError) throw checkoutError;
 
-      // Para cada checkout, buscar o checkin correspondente e informações de auditoria
-      const rentalsData: RentalSummary[] = [];
+      const checkoutList = (checkouts || []) as Array<any>;
+      if (checkoutList.length === 0) {
+        setRentals([]);
+        setFilteredRentals([]);
+        return;
+      }
 
-      for (const checkout of (checkouts || []) as Array<any>) {
-        const { data: checkin } = await supabase
-          .from("checkins")
-          .select("*")
-          .eq("reservation_id", checkout.reservation_id)
-          .maybeSingle();
+      const reservationIds = checkoutList.map((c) => c.reservation_id).filter(Boolean);
 
-        // Buscar informações de quem fez o checkout
-        let checkoutCreatedByUser = null;
-        let checkoutCreatedByCompanyUser = null;
-        
-        if (checkout.created_by_user_id) {
-          // Buscar através de user_profiles para obter informações
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("user_id")
-            .eq("user_id", checkout.created_by_user_id)
-            .single();
-          if (profile) {
-            checkoutCreatedByUser = "Proprietário";
-          }
-        }
-        if (checkout.created_by_company_user_id) {
-          const { data: companyUser } = await supabase
-            .from("company_users")
-            .select("username")
-            .eq("id", checkout.created_by_company_user_id)
-            .maybeSingle();
-          checkoutCreatedByCompanyUser = companyUser?.username || null;
-        }
+      // 2) Buscar todos os checkins de uma vez (evita N+1)
+      const { data: checkinsList } = await supabase
+        .from("checkins")
+        .select("*")
+        .in("reservation_id", reservationIds);
 
-        // Buscar informações de quem fez o checkin
-        let checkinCreatedByUser = null;
-        let checkinCreatedByCompanyUser = null;
-        
-        if (checkin?.created_by_user_id) {
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("user_id")
-            .eq("user_id", checkin.created_by_user_id)
-            .single();
-          if (profile) {
-            checkinCreatedByUser = "Proprietário";
-          }
-        }
-        if (checkin?.created_by_company_user_id) {
-          const { data: companyUser } = await supabase
-            .from("company_users")
-            .select("username")
-            .eq("id", checkin.created_by_company_user_id)
-            .maybeSingle();
-          checkinCreatedByCompanyUser = companyUser?.username || null;
-        }
+      const checkinByReservationId = new Map<string, any>();
+      (checkinsList || []).forEach((ch: any) => {
+        checkinByReservationId.set(ch.reservation_id, ch);
+      });
 
-        rentalsData.push({
+      // 3) Coletar IDs de company_users e buscar numa única query
+      const companyUserIds = new Set<string>();
+      checkoutList.forEach((c) => {
+        if (c.created_by_company_user_id) companyUserIds.add(c.created_by_company_user_id);
+      });
+      (checkinsList || []).forEach((ch: any) => {
+        if (ch.created_by_company_user_id) companyUserIds.add(ch.created_by_company_user_id);
+      });
+
+      let companyUserMap: Record<string, string> = {};
+      if (companyUserIds.size > 0) {
+        const { data: companyUsers } = await supabase
+          .from("company_users")
+          .select("id, username")
+          .in("id", Array.from(companyUserIds));
+        (companyUsers || []).forEach((u: any) => {
+          companyUserMap[u.id] = u.username ?? null;
+        });
+      }
+
+      const rentalsData: RentalSummary[] = checkoutList.map((checkout) => {
+        const checkin = checkinByReservationId.get(checkout.reservation_id) ?? null;
+        const checkoutCreatedByUser = checkout.created_by_user_id ? "Proprietário" : null;
+        const checkoutCreatedByCompanyUser = checkout.created_by_company_user_id
+          ? companyUserMap[checkout.created_by_company_user_id] ?? null
+          : null;
+        const checkinCreatedByUser = checkin?.created_by_user_id ? "Proprietário" : null;
+        const checkinCreatedByCompanyUser = checkin?.created_by_company_user_id
+          ? companyUserMap[checkin.created_by_company_user_id] ?? null
+          : null;
+
+        return {
           id: checkout.id,
           reservation_id: checkout.reservation_id,
           checkout_date: checkout.checkout_date,
-          checkin_date: checkin?.checkin_date || null,
+          checkin_date: checkin?.checkin_date ?? null,
           initial_km: checkout.initial_km,
-          final_km: checkin?.final_km || null,
+          final_km: checkin?.final_km ?? null,
           delivered_by: checkout.delivered_by || "N/A",
-          driver_name: checkout.driver_name || null,
-          received_by: checkin?.received_by || null,
+          driver_name: checkout.driver_name ?? null,
+          received_by: checkin?.received_by ?? null,
           checkout_created_by_user: checkoutCreatedByUser,
           checkout_created_by_company_user: checkoutCreatedByCompanyUser,
           checkin_created_by_user: checkinCreatedByUser,
           checkin_created_by_company_user: checkinCreatedByCompanyUser,
-          deposit_returned: checkin?.deposit_returned || false,
-          deposit_returned_amount: checkin?.deposit_returned_amount || 0,
-          fines_amount: checkin?.fines_amount || 0,
-          extra_fees_amount: checkin?.extra_fees_amount || 0,
-          checkout_notes: checkout.notes || null,
-          checkin_notes: checkin?.notes || null,
+          deposit_returned: checkin?.deposit_returned ?? false,
+          deposit_returned_amount: checkin?.deposit_returned_amount ?? 0,
+          fines_amount: checkin?.fines_amount ?? 0,
+          extra_fees_amount: checkin?.extra_fees_amount ?? 0,
+          checkout_notes: checkout.notes ?? null,
+          checkin_notes: checkin?.notes ?? null,
           reservation: checkout.reservations,
-        });
-      }
+        };
+      });
 
       setRentals(rentalsData);
       setFilteredRentals(rentalsData);

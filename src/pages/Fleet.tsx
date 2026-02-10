@@ -86,12 +86,12 @@ const Fleet = () => {
 
   useEffect(() => {
     fetchCarsOut();
-    fetchAvailableReservations();
+    const t = window.setTimeout(() => fetchAvailableReservations(), 150);
+    return () => window.clearTimeout(t);
   }, []);
 
   const fetchCarsOut = async () => {
     try {
-      // Buscar checkouts sem checkin correspondente
       const { data: checkouts, error: checkoutError } = await supabase
         .from("checkouts")
         .select(`
@@ -117,37 +117,38 @@ const Fleet = () => {
 
       if (checkoutError) throw checkoutError;
 
-      // Filtrar checkouts que não têm checkin
       const checkoutsWithReservations = (checkouts || []) as Array<Checkout & { reservations: Reservation }>;
-      
-      const carsOutData: CarOut[] = [];
-      
-      for (const checkout of checkoutsWithReservations) {
-        const reservation = checkout.reservations;
-        
-        if (!reservation) continue;
-
-        // Verificar se existe checkin para esta reserva
-        const { data: checkin } = await supabase
-          .from("checkins")
-          .select("id")
-          .eq("reservation_id", reservation.id)
-          .maybeSingle();
-
-        if (!checkin) {
-          carsOutData.push({
-            reservation: reservation,
-            checkout: {
-              id: checkout.id,
-              reservation_id: checkout.reservation_id,
-              checkout_date: checkout.checkout_date,
-              initial_km: checkout.initial_km,
-              delivered_by: checkout.delivered_by,
-              notes: checkout.notes || undefined,
-            },
-          });
-        }
+      if (checkoutsWithReservations.length === 0) {
+        setCarsOut([]);
+        setLoading(false);
+        return;
       }
+
+      const reservationIds = checkoutsWithReservations.map((c) => c.reservations?.id).filter(Boolean) as string[];
+      const { data: checkinsList } = await supabase
+        .from("checkins")
+        .select("reservation_id")
+        .in("reservation_id", reservationIds);
+      const reservationIdsWithCheckin = new Set(
+        (checkinsList || []).map((c: { reservation_id: string }) => c.reservation_id)
+      );
+
+      const carsOutData: CarOut[] = checkoutsWithReservations
+        .filter((checkout) => {
+          const reservation = checkout.reservations;
+          return reservation && !reservationIdsWithCheckin.has(reservation.id);
+        })
+        .map((checkout) => ({
+          reservation: checkout.reservations,
+          checkout: {
+            id: checkout.id,
+            reservation_id: checkout.reservation_id,
+            checkout_date: checkout.checkout_date,
+            initial_km: checkout.initial_km,
+            delivered_by: checkout.delivered_by,
+            notes: checkout.notes || undefined,
+          },
+        }));
 
       setCarsOut(carsOutData);
     } catch (error) {
@@ -159,7 +160,6 @@ const Fleet = () => {
 
   const fetchAvailableReservations = async () => {
     try {
-      // Buscar reservas confirmadas que ainda não têm checkout
       const { data: reservations, error } = await supabase
         .from("reservations")
         .select(`
@@ -172,21 +172,24 @@ const Fleet = () => {
 
       if (error) throw error;
 
-      // Filtrar reservas que não têm checkout
-      const reservationsWithoutCheckout: Reservation[] = [];
-      
-      for (const reservation of (reservations || []) as Reservation[]) {
-        const { data: checkout } = await supabase
-          .from("checkouts")
-          .select("id")
-          .eq("reservation_id", reservation.id)
-          .single();
-
-        if (!checkout) {
-          reservationsWithoutCheckout.push(reservation);
-        }
+      const reservationsList = (reservations || []) as Reservation[];
+      if (reservationsList.length === 0) {
+        setAvailableReservations([]);
+        return;
       }
 
+      const reservationIds = reservationsList.map((r) => r.id);
+      const { data: checkoutsList } = await supabase
+        .from("checkouts")
+        .select("reservation_id")
+        .in("reservation_id", reservationIds);
+      const reservationIdsWithCheckout = new Set(
+        (checkoutsList || []).map((c: { reservation_id: string }) => c.reservation_id)
+      );
+
+      const reservationsWithoutCheckout = reservationsList.filter(
+        (r) => !reservationIdsWithCheckout.has(r.id)
+      );
       setAvailableReservations(reservationsWithoutCheckout);
     } catch (error) {
       console.error("Error fetching available reservations:", error);

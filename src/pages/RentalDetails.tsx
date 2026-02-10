@@ -77,25 +77,18 @@ const RentalDetails = () => {
 
   const fetchRentalDetails = async (reservationId: string) => {
     try {
-      // Buscar checkout
-      const { data: checkout, error: checkoutError } = await supabase
-        .from("checkouts")
-        .select("*")
-        .eq("reservation_id", reservationId)
-        .maybeSingle();
+      // 1) Buscar checkout e checkin em paralelo
+      const [checkoutResult, checkinResult] = await Promise.all([
+        supabase.from("checkouts").select("*").eq("reservation_id", reservationId).maybeSingle(),
+        supabase.from("checkins").select("*").eq("reservation_id", reservationId).maybeSingle(),
+      ]);
 
-      if (checkoutError && checkoutError.code !== "PGRST116") throw checkoutError;
+      const checkout = checkoutResult.data;
+      const checkin = checkinResult.data;
+      if (checkoutResult.error && checkoutResult.error.code !== "PGRST116") throw checkoutResult.error;
+      if (checkinResult.error && checkinResult.error.code !== "PGRST116") throw checkinResult.error;
 
-      // Buscar checkin
-      const { data: checkin, error: checkinError } = await supabase
-        .from("checkins")
-        .select("*")
-        .eq("reservation_id", reservationId)
-        .maybeSingle();
-
-      if (checkinError && checkinError.code !== "PGRST116") throw checkinError;
-
-      // Buscar reserva
+      // 2) Buscar reserva
       const { data: reservation, error: reservationError } = await supabase
         .from("reservations")
         .select(`
@@ -114,30 +107,24 @@ const RentalDetails = () => {
         return;
       }
 
-      // Buscar informações de auditoria
-      let checkoutCreatedBy = null;
-      if (checkout.created_by_company_user_id) {
-        const { data: companyUser } = await supabase
+      // 3) Uma única query para todos os company_users necessários
+      const companyUserIds = [checkout.created_by_company_user_id, checkin?.created_by_company_user_id]
+        .filter(Boolean) as string[];
+      let companyUserMap: Record<string, string> = {};
+      if (companyUserIds.length > 0) {
+        const { data: users } = await supabase
           .from("company_users")
-          .select("username")
-          .eq("id", checkout.created_by_company_user_id)
-          .maybeSingle();
-        checkoutCreatedBy = companyUser?.username || null;
-      } else if (checkout.created_by_user_id) {
-        checkoutCreatedBy = "Proprietário";
+          .select("id, username")
+          .in("id", companyUserIds);
+        (users || []).forEach((u: any) => { companyUserMap[u.id] = u.username ?? null; });
       }
 
-      let checkinCreatedBy = null;
-      if (checkin?.created_by_company_user_id) {
-        const { data: companyUser } = await supabase
-          .from("company_users")
-          .select("username")
-          .eq("id", checkin.created_by_company_user_id)
-          .maybeSingle();
-        checkinCreatedBy = companyUser?.username || null;
-      } else if (checkin?.created_by_user_id) {
-        checkinCreatedBy = "Proprietário";
-      }
+      const checkoutCreatedBy = checkout.created_by_user_id
+        ? "Proprietário"
+        : (checkout.created_by_company_user_id ? companyUserMap[checkout.created_by_company_user_id] ?? null : null);
+      const checkinCreatedBy = checkin?.created_by_user_id
+        ? "Proprietário"
+        : (checkin?.created_by_company_user_id ? companyUserMap[checkin.created_by_company_user_id] ?? null : null);
 
       setRental({
         checkout: { ...checkout as any, created_by_display: checkoutCreatedBy },

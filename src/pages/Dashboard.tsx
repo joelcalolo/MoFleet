@@ -56,9 +56,70 @@ const Dashboard = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [expandedAlerts, setExpandedAlerts] = useState<Set<string>>(new Set());
 
+  // Espalhar requisições no tempo para evitar pico e rate limit
   useEffect(() => {
     fetchStats();
-    fetchReservations();
+    const t1 = window.setTimeout(() => fetchReservations(), 250);
+    const t2 = window.setTimeout(() => {
+      const fetchUpcomingReturns = async () => {
+        try {
+          const today = getAngolaDate();
+          const threeDaysBefore = new Date(today);
+          threeDaysBefore.setDate(today.getDate() - 3);
+          const threeDaysLater = new Date(today);
+          threeDaysLater.setDate(today.getDate() + 3);
+          const { data: checkouts, error } = await supabase
+            .from("checkouts")
+            .select(`
+              *,
+              reservations!inner (
+                id,
+                car_id,
+                customer_id,
+                start_date,
+                end_date,
+                status,
+                cars (brand, model, license_plate),
+                customers (name, phone)
+              )
+            `);
+          if (error) throw error;
+          const returnsData: Array<{ reservation: Reservation; endDate: Date; daysUntil: number }> = [];
+          const checkoutsData = (checkouts || []) as Array<any>;
+          if (checkoutsData.length > 0) {
+            const reservationIds = Array.from(
+              new Set(
+                checkoutsData.map((c) => (c.reservations as Reservation)?.id).filter(Boolean)
+              )
+            );
+            const { data: checkinsForReturns } = await supabase
+              .from("checkins")
+              .select("reservation_id")
+              .in("reservation_id", reservationIds);
+            const reservationsWithCheckin = new Set(
+              (checkinsForReturns || []).map((c: any) => c.reservation_id)
+            );
+            for (const checkout of checkoutsData) {
+              const reservation = checkout.reservations as Reservation;
+              if (!reservation || reservationsWithCheckin.has(reservation.id)) continue;
+              const endDate = parseAngolaDate(reservation.end_date);
+              const daysUntil = differenceInDays(endDate, today);
+              if (endDate >= threeDaysBefore && endDate <= threeDaysLater) {
+                returnsData.push({ reservation, endDate, daysUntil });
+              }
+            }
+          }
+          setUpcomingReturns(returnsData.sort((a, b) => a.daysUntil - b.daysUntil));
+        } catch (err) {
+          console.error("Error fetching upcoming returns:", err);
+        }
+      };
+      fetchUpcomingReturns();
+    }, 500);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
   }, []);
 
   const fetchStats = async () => {
@@ -334,86 +395,6 @@ const Dashboard = () => {
     daysUntil: number;
   }>>([]);
 
-  useEffect(() => {
-    const fetchUpcomingReturns = async () => {
-      try {
-        const today = getAngolaDate();
-        const threeDaysBefore = new Date(today);
-        threeDaysBefore.setDate(today.getDate() - 3);
-        const threeDaysLater = new Date(today);
-        threeDaysLater.setDate(today.getDate() + 3);
-
-        // Buscar checkouts sem checkin
-        const { data: checkouts, error } = await supabase
-          .from("checkouts")
-          .select(`
-            *,
-            reservations!inner (
-              id,
-              car_id,
-              customer_id,
-              start_date,
-              end_date,
-              status,
-              cars (brand, model, license_plate),
-              customers (name, phone)
-            )
-          `);
-
-        if (error) throw error;
-
-        const returnsData: Array<{
-          reservation: Reservation;
-          endDate: Date;
-          daysUntil: number;
-        }> = [];
-
-        const checkoutsData = (checkouts || []) as Array<any>;
-
-        if (checkoutsData.length > 0) {
-          const reservationIds = Array.from(
-            new Set(
-              checkoutsData
-                .map((c) => (c.reservations as Reservation)?.id)
-                .filter(Boolean)
-            )
-          );
-
-          const { data: checkinsForReturns } = await supabase
-            .from("checkins")
-            .select("reservation_id")
-            .in("reservation_id", reservationIds);
-
-          const reservationsWithCheckin = new Set(
-            (checkinsForReturns || []).map((c: any) => c.reservation_id)
-          );
-
-          for (const checkout of checkoutsData) {
-            const reservation = checkout.reservations as Reservation;
-            if (!reservation || reservationsWithCheckin.has(reservation.id)) continue;
-
-            const endDate = parseAngolaDate(reservation.end_date);
-            const daysUntil = differenceInDays(endDate, today);
-
-            // Se a data de retorno está entre 3 dias antes e 3 dias depois
-            if (endDate >= threeDaysBefore && endDate <= threeDaysLater) {
-              returnsData.push({
-                reservation,
-                endDate,
-                daysUntil,
-              });
-            }
-          }
-        }
-
-        setUpcomingReturns(returnsData.sort((a, b) => a.daysUntil - b.daysUntil));
-      } catch (error) {
-        console.error("Error fetching upcoming returns:", error);
-      }
-    };
-
-    fetchUpcomingReturns();
-  }, []);
 
   // Notificações push
   useEffect(() => {

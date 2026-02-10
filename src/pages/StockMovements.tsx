@@ -50,8 +50,9 @@ const StockMovements = () => {
   const itemsPerPage = 20;
 
   useEffect(() => {
-    fetchMovements();
     fetchParts();
+    const t = window.setTimeout(() => fetchMovements(), 180);
+    return () => window.clearTimeout(t);
   }, []);
 
   const fetchParts = async () => {

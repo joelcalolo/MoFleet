@@ -54,7 +54,8 @@ const StockDashboard = () => {
 
   useEffect(() => {
     fetchStock();
-    fetchRecentExits();
+    const t = window.setTimeout(() => fetchRecentExits(), 150);
+    return () => window.clearTimeout(t);
   }, []);
 
   const fetchRecentExits = async () => {
