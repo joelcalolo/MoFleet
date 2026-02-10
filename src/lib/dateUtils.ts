@@ -6,9 +6,19 @@ import { ptBR } from "date-fns/locale";
  * Garante que a data seja interpretada como meia-noite no horário local de Angola
  */
 export function parseAngolaDate(dateString: string): Date {
-  // Se a data já vem como string no formato YYYY-MM-DD, criar a data no fuso local
-  // Isso evita problemas de conversão UTC
-  const [year, month, day] = dateString.split('-').map(Number);
+  if (!dateString) return new Date(NaN);
+
+  // Se vier como timestamp ISO (contém "T" ou tem mais de 10 caracteres),
+  // usar o Date nativo e normalizar para o início do dia no fuso local.
+  // Isso mantém compatibilidade com a nova coluna TIMESTAMPTZ em reservations
+  // sem alterar a lógica do resto da aplicação.
+  if (dateString.includes("T") || dateString.length > 10) {
+    const isoDate = new Date(dateString);
+    return startOfDay(isoDate);
+  }
+
+  // Caso clássico: string "YYYY-MM-DD"
+  const [year, month, day] = dateString.split("-").map(Number);
   const date = new Date(year, month - 1, day);
   return startOfDay(date);
 }
