@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, withSupabaseLimit } from "@/lib/supabaseSafe";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -92,28 +92,30 @@ const Fleet = () => {
 
   const fetchCarsOut = async () => {
     try {
-      const { data: checkouts, error: checkoutError } = await supabase
-        .from("checkouts")
-        .select(`
-          *,
-          reservations!inner (
-            id,
-            car_id,
-            customer_id,
-            start_date,
-            end_date,
-            location_type,
-            with_driver,
-            total_amount,
-            status,
-            deposit_paid,
-            notes,
-            created_by,
-            cars (brand, model, license_plate, price_city_with_driver, price_city_without_driver, price_outside_with_driver, price_outside_without_driver, daily_km_limit, extra_km_price),
-            customers (name, phone)
-          )
-        `)
-        .order("checkout_date", { ascending: false });
+      const { data: checkouts, error: checkoutError } = await withSupabaseLimit(() =>
+        supabase
+          .from("checkouts")
+          .select(`
+            *,
+            reservations!inner (
+              id,
+              car_id,
+              customer_id,
+              start_date,
+              end_date,
+              location_type,
+              with_driver,
+              total_amount,
+              status,
+              deposit_paid,
+              notes,
+              created_by,
+              cars (brand, model, license_plate, price_city_with_driver, price_city_without_driver, price_outside_with_driver, price_outside_without_driver, daily_km_limit, extra_km_price),
+              customers (name, phone)
+            )
+          `)
+          .order("checkout_date", { ascending: false })
+      );
 
       if (checkoutError) throw checkoutError;
 
@@ -125,10 +127,12 @@ const Fleet = () => {
       }
 
       const reservationIds = checkoutsWithReservations.map((c) => c.reservations?.id).filter(Boolean) as string[];
-      const { data: checkinsList } = await supabase
-        .from("checkins")
-        .select("reservation_id")
-        .in("reservation_id", reservationIds);
+      const { data: checkinsList } = await withSupabaseLimit(() =>
+        supabase
+          .from("checkins")
+          .select("reservation_id")
+          .in("reservation_id", reservationIds)
+      );
       const reservationIdsWithCheckin = new Set(
         (checkinsList || []).map((c: { reservation_id: string }) => c.reservation_id)
       );
@@ -160,15 +164,17 @@ const Fleet = () => {
 
   const fetchAvailableReservations = async () => {
     try {
-      const { data: reservations, error } = await supabase
-        .from("reservations")
-        .select(`
-          *,
-          cars (brand, model, license_plate, daily_km_limit, extra_km_price),
-          customers (name, phone)
-        `)
-        .in("status", ["confirmed", "pending"])
-        .order("start_date", { ascending: true });
+      const { data: reservations, error } = await withSupabaseLimit(() =>
+        supabase
+          .from("reservations")
+          .select(`
+            *,
+            cars (brand, model, license_plate, daily_km_limit, extra_km_price),
+            customers (name, phone)
+          `)
+          .in("status", ["confirmed", "pending"])
+          .order("start_date", { ascending: true })
+      );
 
       if (error) throw error;
 
@@ -179,10 +185,12 @@ const Fleet = () => {
       }
 
       const reservationIds = reservationsList.map((r) => r.id);
-      const { data: checkoutsList } = await supabase
-        .from("checkouts")
-        .select("reservation_id")
-        .in("reservation_id", reservationIds);
+      const { data: checkoutsList } = await withSupabaseLimit(() =>
+        supabase
+          .from("checkouts")
+          .select("reservation_id")
+          .in("reservation_id", reservationIds)
+      );
       const reservationIdsWithCheckout = new Set(
         (checkoutsList || []).map((c: { reservation_id: string }) => c.reservation_id)
       );

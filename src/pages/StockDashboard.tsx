@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, withSupabaseLimit } from "@/lib/supabaseSafe";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -60,20 +60,22 @@ const StockDashboard = () => {
 
   const fetchRecentExits = async () => {
     try {
-      const { data, error } = await supabase
-        .from("stock_exits")
-        .select(`
-          id,
-          exit_number,
-          exit_date,
-          quantity,
-          reason,
-          status,
-          parts (name)
-        `)
-        .order("exit_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(3);
+      const { data, error } = await withSupabaseLimit(() =>
+        supabase
+          .from("stock_exits")
+          .select(`
+            id,
+            exit_number,
+            exit_date,
+            quantity,
+            reason,
+            status,
+            parts (name)
+          `)
+          .order("exit_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(3)
+      );
 
       if (error) throw error;
 
@@ -96,10 +98,12 @@ const StockDashboard = () => {
   const fetchStock = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("current_stock")
-        .select("*")
-        .order("part_name", { ascending: true });
+      const { data, error } = await withSupabaseLimit(() =>
+        supabase
+          .from("current_stock")
+          .select("*")
+          .order("part_name", { ascending: true })
+      );
 
       if (error) {
         console.error("Error fetching stock:", error);

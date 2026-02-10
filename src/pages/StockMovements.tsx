@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, withSupabaseLimit } from "@/lib/supabaseSafe";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -57,10 +57,12 @@ const StockMovements = () => {
 
   const fetchParts = async () => {
     try {
-      const { data } = await supabase
-        .from("parts")
-        .select("id, name, code, category_id")
-        .order("name");
+      const { data } = await withSupabaseLimit(() =>
+        supabase
+          .from("parts")
+          .select("id, name, code, category_id")
+          .order("name")
+      );
       if (data) {
         setParts(data);
       }
@@ -71,10 +73,12 @@ const StockMovements = () => {
 
   const fetchCategories = async () => {
     try {
-      const { data } = await supabase
-        .from("part_categories")
-        .select("id, name, code")
-        .order("name");
+      const { data } = await withSupabaseLimit(() =>
+        supabase
+          .from("part_categories")
+          .select("id, name, code")
+          .order("name")
+      );
       if (data) {
         setCategories(data);
       }
@@ -85,10 +89,12 @@ const StockMovements = () => {
 
   const fetchCars = async () => {
     try {
-      const { data } = await supabase
-        .from("cars")
-        .select("id, brand, model, license_plate")
-        .order("license_plate");
+      const { data } = await withSupabaseLimit(() =>
+        supabase
+          .from("cars")
+          .select("id, brand, model, license_plate")
+          .order("license_plate")
+      );
       if (data) {
         setCars(data);
       }
@@ -102,61 +108,67 @@ const StockMovements = () => {
       setLoading(true);
       
       // Buscar entradas
-      const { data: entries } = await supabase
-        .from("stock_entries")
-        .select(`
-          id,
-          entry_number,
-          entry_date,
-          part_id,
-          quantity,
-          purchased_by_name,
-          notes,
-          created_at,
-          parts (name, code, category_id, part_categories (name, code))
-        `)
-        .order("entry_date", { ascending: false })
-        .order("created_at", { ascending: false });
+      const { data: entries } = await withSupabaseLimit(() =>
+        supabase
+          .from("stock_entries")
+          .select(`
+            id,
+            entry_number,
+            entry_date,
+            part_id,
+            quantity,
+            purchased_by_name,
+            notes,
+            created_at,
+            parts (name, code, category_id, part_categories (name, code))
+          `)
+          .order("entry_date", { ascending: false })
+          .order("created_at", { ascending: false })
+      );
 
       // Buscar saídas
-      const { data: exits } = await supabase
-        .from("stock_exits")
-        .select(`
-          id,
-          exit_number,
-          exit_date,
-          part_id,
-          car_id,
-          quantity,
-          requested_by_name,
-          delivered_by_name,
-          reason,
-          status,
-          notes,
-          created_at,
-          parts (name, code, category_id, part_categories (name, code)),
-          cars (brand, model, license_plate)
-        `)
-        .order("exit_date", { ascending: false })
-        .order("created_at", { ascending: false });
+      const { data: exits } = await withSupabaseLimit(() =>
+        supabase
+          .from("stock_exits")
+          .select(`
+            id,
+            exit_number,
+            exit_date,
+            part_id,
+            car_id,
+            quantity,
+            requested_by_name,
+            delivered_by_name,
+            reason,
+            status,
+            notes,
+            created_at,
+            parts (name, code, category_id, part_categories (name, code)),
+            cars (brand, model, license_plate)
+          `)
+          .order("exit_date", { ascending: false })
+          .order("created_at", { ascending: false })
+      );
 
       // Buscar ajustes
-      const { data: adjustments } = await supabase
-        .from("stock_adjustments")
-        .select(`
-          id,
-          adjustment_number,
-          adjustment_date,
-          part_id,
-          difference,
-          reason_description,
-          status,
-          notes,
-          created_at,
-          parts (name, code, category_id, part_categories (name, code))
-        `)
-        .order("adjustment_date", { ascending: false })
-        .order("created_at", { ascending: false });
+      const { data: adjustments } = await withSupabaseLimit(() =>
+        supabase
+          .from("stock_adjustments")
+          .select(`
+            id,
+            adjustment_number,
+            adjustment_date,
+            part_id,
+            difference,
+            reason_description,
+            status,
+            notes,
+            created_at,
+            parts (name, code, category_id, part_categories (name, code))
+          `)
+          .order("adjustment_date", { ascending: false })
+          .order("created_at", { ascending: false })
+      );
 
       // Combinar e transformar dados
       const allMovements: Movement[] = [];

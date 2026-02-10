@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, withSupabaseLimit } from "@/lib/supabaseSafe";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -91,23 +91,25 @@ const RentalsSummary = () => {
   const fetchRentals = async () => {
     try {
       // 1) Buscar todos os checkouts com suas reservas
-      const { data: checkouts, error: checkoutError } = await supabase
-        .from("checkouts")
-        .select(`
-          *,
-          reservations!inner (
-            id,
-            start_date,
-            end_date,
-            total_amount,
-            status,
-            location_type,
-            with_driver,
-            cars (brand, model, license_plate, price_city_with_driver, price_city_without_driver, price_outside_with_driver, price_outside_without_driver, daily_km_limit, extra_km_price),
-            customers (name, phone)
-          )
-        `)
-        .order("checkout_date", { ascending: false });
+      const { data: checkouts, error: checkoutError } = await withSupabaseLimit(() =>
+        supabase
+          .from("checkouts")
+          .select(`
+            *,
+            reservations!inner (
+              id,
+              start_date,
+              end_date,
+              total_amount,
+              status,
+              location_type,
+              with_driver,
+              cars (brand, model, license_plate, price_city_with_driver, price_city_without_driver, price_outside_with_driver, price_outside_without_driver, daily_km_limit, extra_km_price),
+              customers (name, phone)
+            )
+          `)
+          .order("checkout_date", { ascending: false })
+      );
 
       if (checkoutError) throw checkoutError;
 
@@ -121,10 +123,12 @@ const RentalsSummary = () => {
       const reservationIds = checkoutList.map((c) => c.reservation_id).filter(Boolean);
 
       // 2) Buscar todos os checkins de uma vez (evita N+1)
-      const { data: checkinsList } = await supabase
-        .from("checkins")
-        .select("*")
-        .in("reservation_id", reservationIds);
+      const { data: checkinsList } = await withSupabaseLimit(() =>
+        supabase
+          .from("checkins")
+          .select("*")
+          .in("reservation_id", reservationIds)
+      );
 
       const checkinByReservationId = new Map<string, any>();
       (checkinsList || []).forEach((ch: any) => {
@@ -142,10 +146,12 @@ const RentalsSummary = () => {
 
       let companyUserMap: Record<string, string> = {};
       if (companyUserIds.size > 0) {
-        const { data: companyUsers } = await supabase
-          .from("company_users")
-          .select("id, username")
-          .in("id", Array.from(companyUserIds));
+        const { data: companyUsers } = await withSupabaseLimit(() =>
+          supabase
+            .from("company_users")
+            .select("id, username")
+            .in("id", Array.from(companyUserIds))
+        );
         (companyUsers || []).forEach((u: any) => {
           companyUserMap[u.id] = u.username ?? null;
         });
@@ -184,7 +190,7 @@ const RentalsSummary = () => {
           checkin_notes: checkin?.notes ?? null,
           reservation: checkout.reservations,
         };
-      });
+        });
 
       setRentals(rentalsData);
       setFilteredRentals(rentalsData);

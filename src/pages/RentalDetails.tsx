@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, withSupabaseLimit } from "@/lib/supabaseSafe";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, FileDown } from "lucide-react";
@@ -79,8 +79,12 @@ const RentalDetails = () => {
     try {
       // 1) Buscar checkout e checkin em paralelo
       const [checkoutResult, checkinResult] = await Promise.all([
-        supabase.from("checkouts").select("*").eq("reservation_id", reservationId).maybeSingle(),
-        supabase.from("checkins").select("*").eq("reservation_id", reservationId).maybeSingle(),
+        withSupabaseLimit(() =>
+          supabase.from("checkouts").select("*").eq("reservation_id", reservationId).maybeSingle()
+        ),
+        withSupabaseLimit(() =>
+          supabase.from("checkins").select("*").eq("reservation_id", reservationId).maybeSingle()
+        ),
       ]);
 
       const checkout = checkoutResult.data;
@@ -89,15 +93,17 @@ const RentalDetails = () => {
       if (checkinResult.error && checkinResult.error.code !== "PGRST116") throw checkinResult.error;
 
       // 2) Buscar reserva
-      const { data: reservation, error: reservationError } = await supabase
-        .from("reservations")
-        .select(`
-          *,
-          cars (brand, model, license_plate, price_city_with_driver, price_city_without_driver, price_outside_with_driver, price_outside_without_driver, daily_km_limit, extra_km_price),
-          customers (name, phone, email)
-        `)
-        .eq("id", reservationId)
-        .single();
+      const { data: reservation, error: reservationError } = await withSupabaseLimit(() =>
+        supabase
+          .from("reservations")
+          .select(`
+            *,
+            cars (brand, model, license_plate, price_city_with_driver, price_city_without_driver, price_outside_with_driver, price_outside_without_driver, daily_km_limit, extra_km_price),
+            customers (name, phone, email)
+          `)
+          .eq("id", reservationId)
+          .single()
+      );
 
       if (reservationError) throw reservationError;
 
@@ -112,10 +118,12 @@ const RentalDetails = () => {
         .filter(Boolean) as string[];
       let companyUserMap: Record<string, string> = {};
       if (companyUserIds.length > 0) {
-        const { data: users } = await supabase
-          .from("company_users")
-          .select("id, username")
-          .in("id", companyUserIds);
+        const { data: users } = await withSupabaseLimit(() =>
+          supabase
+            .from("company_users")
+            .select("id, username")
+            .in("id", companyUserIds)
+        );
         (users || []).forEach((u: any) => { companyUserMap[u.id] = u.username ?? null; });
       }
 

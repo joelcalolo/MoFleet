@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, withSupabaseLimit } from "@/lib/supabaseSafe";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Car, Calendar, DollarSign, AlertCircle, ChevronLeft, ChevronRight, Bell, Users, CheckCircle, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 import Layout from "@/components/Layout";
@@ -68,47 +68,61 @@ const Dashboard = () => {
           threeDaysBefore.setDate(today.getDate() - 3);
           const threeDaysLater = new Date(today);
           threeDaysLater.setDate(today.getDate() + 3);
-          const { data: checkouts, error } = await supabase
-            .from("checkouts")
-            .select(`
-              *,
-              reservations!inner (
-                id,
-                car_id,
-                customer_id,
-                start_date,
-                end_date,
-                status,
-                cars (brand, model, license_plate),
-                customers (name, phone)
-              )
-            `);
+
+          const { data: checkouts, error } = await withSupabaseLimit(() =>
+            supabase
+              .from("checkouts")
+              .select(`
+                *,
+                reservations!inner (
+                  id,
+                  car_id,
+                  customer_id,
+                  start_date,
+                  end_date,
+                  status,
+                  cars (brand, model, license_plate),
+                  customers (name, phone)
+                )
+              `)
+          );
+
           if (error) throw error;
+
           const returnsData: Array<{ reservation: Reservation; endDate: Date; daysUntil: number }> = [];
           const checkoutsData = (checkouts || []) as Array<any>;
+
           if (checkoutsData.length > 0) {
             const reservationIds = Array.from(
               new Set(
                 checkoutsData.map((c) => (c.reservations as Reservation)?.id).filter(Boolean)
               )
             );
-            const { data: checkinsForReturns } = await supabase
-              .from("checkins")
-              .select("reservation_id")
-              .in("reservation_id", reservationIds);
+
+            const { data: checkinsForReturns } = await withSupabaseLimit(() =>
+              supabase
+                .from("checkins")
+                .select("reservation_id")
+                .in("reservation_id", reservationIds)
+            );
+
             const reservationsWithCheckin = new Set(
               (checkinsForReturns || []).map((c: any) => c.reservation_id)
             );
+
             for (const checkout of checkoutsData) {
               const reservation = checkout.reservations as Reservation;
               if (!reservation || reservationsWithCheckin.has(reservation.id)) continue;
+
               const endDate = parseAngolaDate(reservation.end_date);
               const daysUntil = differenceInDays(endDate, today);
+
               if (endDate >= threeDaysBefore && endDate <= threeDaysLater) {
                 returnsData.push({ reservation, endDate, daysUntil });
               }
             }
           }
+
           setUpcomingReturns(returnsData.sort((a, b) => a.daysUntil - b.daysUntil));
         } catch (err) {
           console.error("Error fetching upcoming returns:", err);
@@ -128,20 +142,28 @@ const Dashboard = () => {
     try {
       const today = getAngolaDate();
 
-      const [reservationsRes, carsRes, customersRes, checkoutsRes] = await Promise.all([
-        supabase
-          .from("reservations")
-          .select("total_amount, status, end_date"),
-        supabase
-          .from("cars")
-          .select("id, is_available"),
-        supabase
-          .from("customers")
-          .select("id, is_active"),
-        supabase
-          .from("checkouts")
-          .select("id, reservation_id"),
-      ]);
+      const [reservationsRes, carsRes, customersRes, checkoutsRes] = (await Promise.all([
+        withSupabaseLimit(() =>
+          supabase
+            .from("reservations")
+            .select("total_amount, status, end_date")
+        ),
+        withSupabaseLimit(() =>
+          supabase
+            .from("cars")
+            .select("id, is_available")
+        ),
+        withSupabaseLimit(() =>
+          supabase
+            .from("customers")
+            .select("id, is_active")
+        ),
+        withSupabaseLimit(() =>
+          supabase
+            .from("checkouts")
+            .select("id, reservation_id")
+        ),
+      ])) as any[];
 
       console.log("Dashboard: Data fetched:", {
         reservations: reservationsRes.data?.length || 0,
@@ -207,10 +229,12 @@ const Dashboard = () => {
           new Set(checkouts.map((c: any) => c.reservation_id).filter(Boolean))
         );
 
-        const { data: checkinsForCheckouts } = await supabase
-          .from("checkins")
-          .select("reservation_id")
-          .in("reservation_id", reservationIds);
+        const { data: checkinsForCheckouts } = (await withSupabaseLimit(() =>
+          supabase
+            .from("checkins")
+            .select("reservation_id")
+            .in("reservation_id", reservationIds)
+        )) as any;
 
         const reservationsWithCheckin = new Set(
           (checkinsForCheckouts || []).map((c: any) => c.reservation_id)
@@ -248,14 +272,16 @@ const Dashboard = () => {
     setReservationsLoading(true);
 
     try {
-      const { data, error } = await supabase
-        .from("reservations")
-        .select(`
-          *,
-          cars (brand, model, license_plate),
-          customers (name, phone)
-        `)
-        .order("start_date", { ascending: false });
+      const { data, error } = (await withSupabaseLimit(() =>
+        supabase
+          .from("reservations")
+          .select(`
+            *,
+            cars (brand, model, license_plate),
+            customers (name, phone)
+          `)
+          .order("start_date", { ascending: false })
+      )) as any;
 
       console.log("Dashboard: Reservations fetched:", {
         count: data?.length || 0,
@@ -277,10 +303,12 @@ const Dashboard = () => {
 
       const reservationIds = reservationsData.map((r) => r.id);
 
-      const { data: checkinsForReservations } = await supabase
-        .from("checkins")
-        .select("reservation_id")
-        .in("reservation_id", reservationIds);
+      const { data: checkinsForReservations } = (await withSupabaseLimit(() =>
+        supabase
+          .from("checkins")
+          .select("reservation_id")
+          .in("reservation_id", reservationIds)
+      )) as any;
 
       const reservationsWithCheckin = new Set(
         (checkinsForReservations || []).map((c: any) => c.reservation_id)
