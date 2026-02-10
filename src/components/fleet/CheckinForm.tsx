@@ -16,7 +16,7 @@ import {
   formatDateTimeLocal,
   parseDateTimeLocal
 } from "@/lib/dateUtils";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import { handleError, logError } from "@/lib/errorHandler";
 
 interface CheckinFormProps {
@@ -330,7 +330,7 @@ export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: Check
         </div>
       </div>
 
-      {expectedReturnDateTime && (
+      {expectedReturnDateTime && isValid(expectedReturnDateTime) && (
         <div className="p-2 border rounded-md bg-blue-50">
           <div className="text-sm">
             <span className="font-medium">Retorno esperado: </span>
