@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { Reservation } from "@/pages/Reservations";
 import { Car } from "@/pages/Cars";
 import { Customer } from "@/pages/Customers";
-import { parseAngolaDate, formatAngolaDate } from "@/lib/dateUtils";
+import { parseAngolaDate, formatAngolaDate, parseDateTimeLocal, formatDateTimeLocal } from "@/lib/dateUtils";
 import { handleError, logError } from "@/lib/errorHandler";
 
 interface ReservationFormProps {
@@ -28,8 +28,13 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
   const [formData, setFormData] = useState({
     car_id: reservation?.car_id || "",
     customer_id: reservation?.customer_id || "",
-    start_date: reservation?.start_date || "",
-    end_date: reservation?.end_date || "",
+    // Converter valores existentes (que vêm do banco como timestamp) para o formato esperado pelo input datetime-local
+    start_date: reservation?.start_date
+      ? formatDateTimeLocal(new Date(reservation.start_date as any))
+      : "",
+    end_date: reservation?.end_date
+      ? formatDateTimeLocal(new Date(reservation.end_date as any))
+      : "",
     location_type: (reservation?.location_type as "city" | "outside") || "city",
     with_driver: reservation?.with_driver || false,
     with_delivery: (reservation as any)?.with_delivery ?? true,
@@ -40,6 +45,14 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
     notes: reservation?.notes || "",
     created_by: reservation?.created_by || "",
   });
+
+  // Utilitário para interpretar datas de reserva:
+  // - Se vier no formato datetime-local (YYYY-MM-DDTHH:mm), usa parseDateTimeLocal
+  // - Se vier apenas como data (YYYY-MM-DD), usa parseAngolaDate
+  const parseReservationDate = (value: string): Date => {
+    if (!value) return new Date(NaN);
+    return value.includes("T") ? parseDateTimeLocal(value) : parseAngolaDate(value);
+  };
 
   useEffect(() => {
     fetchCarsAndCustomers();
@@ -94,8 +107,8 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
       return { hasOverlap: false };
     }
 
-    const newStart = parseAngolaDate(startDate);
-    const newEnd = parseAngolaDate(endDate);
+    const newStart = parseReservationDate(startDate);
+    const newEnd = parseReservationDate(endDate);
 
     // Verificar sobreposição: dois intervalos se sobrepõem se start1 <= end2 AND start2 <= end1
     for (const existing of existingReservations) {
@@ -123,10 +136,14 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
 
     setSelectedCar(car);
 
-    const start = parseAngolaDate(formData.start_date);
-    const end = parseAngolaDate(formData.end_date);
-    // Adiciona 1 dia ao cálculo para incluir o primeiro dia
-    const days = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const start = parseReservationDate(formData.start_date);
+    const end = parseReservationDate(formData.end_date);
+
+    const diffMs = end.getTime() - start.getTime();
+    const dayMs = 1000 * 60 * 60 * 24;
+    // Cálculo de diárias baseado em janelas reais de 24h:
+    // qualquer período até 24h conta 1 diária; acima disso, arredonda para cima.
+    const days = Math.ceil(diffMs / dayMs);
 
     if (days <= 0) {
       toast.error("A data de fim deve ser posterior à data de início");
@@ -327,10 +344,10 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="start_date">Data de Início *</Label>
+          <Label htmlFor="start_date">Data e Hora de Início *</Label>
           <Input
             id="start_date"
-            type="date"
+            type="datetime-local"
             value={formData.start_date}
             onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
             required
@@ -338,10 +355,10 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="end_date">Data de Fim *</Label>
+          <Label htmlFor="end_date">Data e Hora de Fim *</Label>
           <Input
             id="end_date"
-            type="date"
+            type="datetime-local"
             value={formData.end_date}
             onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
             required
