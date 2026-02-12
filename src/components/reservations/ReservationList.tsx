@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { formatAngolaDate } from "@/lib/dateUtils";
+import { getEmployeeNamesBatch } from "@/lib/userUtils";
 
 interface ReservationListProps {
   reservations: Reservation[];
@@ -51,7 +52,30 @@ export const ReservationList = ({ reservations, loading, onEdit, onRefresh }: Re
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
+  const [employeeNames, setEmployeeNames] = useState<Map<string, string>>(new Map());
   const itemsPerPage = 10;
+
+  // Buscar nomes dos funcionários quando as reservas mudarem
+  useEffect(() => {
+    const fetchEmployeeNames = async () => {
+      const userIds: string[] = [];
+      const companyUserIds: string[] = [];
+
+      reservations.forEach((r: any) => {
+        if (r.created_by_user_id) userIds.push(r.created_by_user_id);
+        if (r.created_by_company_user_id) companyUserIds.push(r.created_by_company_user_id);
+      });
+
+      if (userIds.length > 0 || companyUserIds.length > 0) {
+        const names = await getEmployeeNamesBatch(userIds, companyUserIds);
+        setEmployeeNames(names);
+      }
+    };
+
+    if (reservations.length > 0) {
+      fetchEmployeeNames();
+    }
+  }, [reservations]);
 
   // Filtrar reservas baseado na pesquisa
   const filteredReservations = useMemo(() => {
@@ -219,7 +243,16 @@ export const ReservationList = ({ reservations, loading, onEdit, onRefresh }: Re
                   {reservation.total_amount.toFixed(2)} AKZ
                 </TableCell>
                 <TableCell>
-                  {reservation.created_by || "N/A"}
+                  {(() => {
+                    const r = reservation as any;
+                    if (r.created_by_user_id && employeeNames.has(r.created_by_user_id)) {
+                      return employeeNames.get(r.created_by_user_id);
+                    }
+                    if (r.created_by_company_user_id && employeeNames.has(r.created_by_company_user_id)) {
+                      return employeeNames.get(r.created_by_company_user_id);
+                    }
+                    return r.created_by || "N/A";
+                  })()}
                 </TableCell>
                 <TableCell>
                   <Badge

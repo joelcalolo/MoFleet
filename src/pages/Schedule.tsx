@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import Layout from "@/components/Layout";
 import { Card } from "@/components/ui/card";
-import { format, eachDayOfInterval, startOfMonth, endOfMonth, addMonths } from "date-fns";
+import { format, eachDayOfInterval, startOfMonth, endOfMonth, addMonths, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { parseAngolaDate } from "@/lib/dateUtils";
 
 interface ScheduleReservation {
   id: string;
@@ -49,6 +50,37 @@ const Schedule = () => {
     end: endOfMonth(currentDate),
   });
 
+  // Ordenar carros por reservas mais recentes e filtrar carros sem reservas
+  const sortedCars = useMemo(() => {
+    return cars
+      .map(car => {
+        const carReservations = reservations.filter(r => r.car_id === car.id);
+        const latestReservation = carReservations.length > 0
+          ? carReservations.reduce((latest, r) => {
+              const rDate = parseAngolaDate(r.start_date);
+              const latestDate = parseAngolaDate(latest.start_date);
+              return rDate > latestDate ? r : latest;
+            })
+          : null;
+        return { car, latestReservation };
+      })
+      .sort((a, b) => {
+        // Carros com reservas primeiro
+        if (!a.latestReservation && !b.latestReservation) return 0;
+        if (!a.latestReservation) return 1;
+        if (!b.latestReservation) return -1;
+        // Ordenar por data mais recente (mais próxima no futuro ou mais recente no passado)
+        const dateA = parseAngolaDate(a.latestReservation.start_date);
+        const dateB = parseAngolaDate(b.latestReservation.start_date);
+        return dateB.getTime() - dateA.getTime(); // Mais recente primeiro
+      })
+      .filter(({ car, latestReservation }) => {
+        // Filtrar apenas carros com reservas no período visível
+        return latestReservation !== null;
+      })
+      .map(({ car }) => car);
+  }, [cars, reservations]);
+
   const statusColors: Record<string, string> = {
     pending: "bg-status-pending/20 border-status-pending",
     confirmed: "bg-status-confirmed/20 border-status-confirmed",
@@ -85,7 +117,7 @@ const Schedule = () => {
               </div>
             </div>
 
-            {cars.map((car) => {
+            {sortedCars.map((car) => {
               const carReservations = reservations.filter((r) => r.car_id === car.id);
 
               return (
@@ -97,9 +129,10 @@ const Schedule = () => {
                   <div className="grid grid-cols-7 gap-2">
                     {days.map((day) => {
                       const reservation = carReservations.find((r) => {
-                        const start = new Date(r.start_date);
-                        const end = new Date(r.end_date);
-                        return day >= start && day <= end;
+                        const start = parseAngolaDate(r.start_date);
+                        const end = parseAngolaDate(r.end_date);
+                        const dayStart = startOfDay(day);
+                        return dayStart >= start && dayStart <= end;
                       });
 
                       return (

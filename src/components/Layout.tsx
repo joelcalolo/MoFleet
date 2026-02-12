@@ -20,6 +20,7 @@ const Layout = ({ children }: LayoutProps) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [stockMenuOpen, setStockMenuOpen] = useState(false);
   const isMobile = useIsMobile();
 
@@ -64,10 +65,12 @@ const Layout = ({ children }: LayoutProps) => {
           .maybeSingle();
         if (!cancelled) {
           setIsSuperAdmin(profile?.role === 'super_admin');
+          setUserRole(profile?.role || null);
         }
       } else {
         if (!cancelled) {
           setIsSuperAdmin(false);
+          setUserRole(null);
         }
       }
     };
@@ -94,6 +97,10 @@ const Layout = ({ children }: LayoutProps) => {
     { icon: Truck, label: "Frota", path: "/fleet" },
     { icon: FileText, label: "Resumo de Alugueres", path: "/rentals-summary" },
     { icon: Package, label: "Stock", path: "/inventory" },
+    // Mostrar Funcionários apenas para admins/owners
+    ...(userRole === 'admin' || userRole === 'owner' || isSuperAdmin 
+      ? [{ icon: Users, label: "Funcionários", path: "/users" }] 
+      : []),
   ];
 
   // Submenu de gestão de stock
@@ -209,6 +216,22 @@ const Layout = ({ children }: LayoutProps) => {
                     {user?.email || ""}
                   </div>
                   <div className="space-y-2">
+                    {(userRole === "admin" || userRole === "owner" || isSuperAdmin) && (
+                      <Button
+                        variant={location.pathname === "/users" ? "secondary" : "outline"}
+                        className={cn(
+                          "w-full justify-start",
+                          location.pathname === "/users" && "bg-secondary"
+                        )}
+                        onClick={() => {
+                          navigate("/users");
+                          setMobileMenuOpen(false);
+                        }}
+                      >
+                        <Users className="h-4 w-4 mr-2" />
+                        Funcionários
+                      </Button>
+                    )}
                     <Button
                       variant={location.pathname === "/settings" ? "secondary" : "outline"}
                       className={cn(
@@ -371,6 +394,21 @@ const Layout = ({ children }: LayoutProps) => {
                 </Button>
               )}
               
+              {(userRole === "admin" || userRole === "owner" || isSuperAdmin) && (
+                <Button
+                  variant={location.pathname === "/users" ? "secondary" : "outline"}
+                  className={cn(
+                    "w-full",
+                    sidebarCollapsed ? "justify-center px-0" : "justify-start",
+                    location.pathname === "/users" && "bg-secondary"
+                  )}
+                  onClick={() => navigate("/users")}
+                  title={sidebarCollapsed ? "Funcionários" : undefined}
+                >
+                  <Users className={cn("h-4 w-4", !sidebarCollapsed && "mr-2")} />
+                  {!sidebarCollapsed && "Funcionários"}
+                </Button>
+              )}
               <Button
                 variant={location.pathname === "/settings" ? "secondary" : "outline"}
                 className={cn(

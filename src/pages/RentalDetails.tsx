@@ -113,26 +113,20 @@ const RentalDetails = () => {
         return;
       }
 
-      // 3) Uma única query para todos os company_users necessários
-      const companyUserIds = [checkout.created_by_company_user_id, checkin?.created_by_company_user_id]
-        .filter(Boolean) as string[];
-      let companyUserMap: Record<string, string> = {};
-      if (companyUserIds.length > 0) {
-        const { data: users } = await withSupabaseLimit(() =>
-          supabase
-            .from("company_users")
-            .select("id, username")
-            .in("id", companyUserIds)
-        );
-        (users || []).forEach((u: any) => { companyUserMap[u.id] = u.username ?? null; });
-      }
-
-      const checkoutCreatedBy = checkout.created_by_user_id
-        ? "Proprietário"
-        : (checkout.created_by_company_user_id ? companyUserMap[checkout.created_by_company_user_id] ?? null : null);
-      const checkinCreatedBy = checkin?.created_by_user_id
-        ? "Proprietário"
-        : (checkin?.created_by_company_user_id ? companyUserMap[checkin.created_by_company_user_id] ?? null : null);
+      // 3) Buscar nomes dos funcionários usando função helper
+      const { getEmployeeName } = await import("@/lib/userUtils");
+      
+      const checkoutCreatedBy = await getEmployeeName(
+        checkout.created_by_user_id || null,
+        checkout.created_by_company_user_id || null
+      );
+      
+      const checkinCreatedBy = checkin 
+        ? await getEmployeeName(
+            checkin.created_by_user_id || null,
+            checkin.created_by_company_user_id || null
+          )
+        : null;
 
       setRental({
         checkout: { ...checkout as any, created_by_display: checkoutCreatedBy },

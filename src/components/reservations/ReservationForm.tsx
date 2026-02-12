@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, withSupabaseLimit } from "@/lib/supabaseSafe";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,7 +43,6 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
     status: (reservation?.status as any) || "pending",
     deposit_paid: reservation?.deposit_paid || false,
     notes: reservation?.notes || "",
-    created_by: reservation?.created_by || "",
   });
 
   // Utilitário para interpretar datas de reserva:
@@ -65,17 +64,22 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
   }, [formData.car_id, formData.start_date, formData.end_date, formData.location_type, formData.with_driver, formData.with_delivery, formData.with_pickup]);
 
   const fetchCarsAndCustomers = async () => {
-    const [carsRes, customersRes] = await Promise.all([
-      supabase.from("cars").select("*").eq("is_available", true),
-      supabase.from("customers").select("*").eq("is_active", true),
-    ]);
+    try {
+      const [carsRes, customersRes] = await Promise.all([
+        withSupabaseLimit(() => supabase.from("cars").select("*").eq("is_available", true)),
+        withSupabaseLimit(() => supabase.from("customers").select("*").eq("is_active", true)),
+      ]);
 
-    setCars(carsRes.data || []);
-    setCustomers(customersRes.data || []);
-    
-    if (reservation) {
-      const car = carsRes.data?.find(c => c.id === reservation.car_id);
-      setSelectedCar(car || null);
+      setCars((carsRes as any).data || []);
+      setCustomers((customersRes as any).data || []);
+      
+      if (reservation) {
+        const car = (carsRes as any).data?.find((c: Car) => c.id === reservation.car_id);
+        setSelectedCar(car || null);
+      }
+    } catch (error) {
+      console.error("Error fetching cars and customers:", error);
+      toast.error("Erro ao carregar dados. Tente novamente.");
     }
   };
 
@@ -85,46 +89,51 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
       return { hasOverlap: false };
     }
 
-    // Buscar todas as reservas ativas do carro (exceto canceladas e a reserva atual se estiver editando)
-    const query = supabase
-      .from("reservations")
-      .select("id, start_date, end_date, status, cars(brand, model), customers(name)")
-      .eq("car_id", carId)
-      .neq("status", "cancelled");
+    try {
+      // Buscar todas as reservas ativas do carro (exceto canceladas e a reserva atual se estiver editando)
+      let query = supabase
+        .from("reservations")
+        .select("id, start_date, end_date, status, cars(brand, model), customers(name)")
+        .eq("car_id", carId)
+        .neq("status", "cancelled");
 
-    if (excludeId) {
-      query.neq("id", excludeId);
-    }
+      if (excludeId) {
+        query = query.neq("id", excludeId);
+      }
 
-    const { data: existingReservations, error } = await query;
+      const { data: existingReservations, error } = (await withSupabaseLimit(() => query)) as any;
 
-    if (error) {
+      if (error) {
+        console.error("Error checking overlaps:", error);
+        return { hasOverlap: false };
+      }
+
+      if (!existingReservations || existingReservations.length === 0) {
+        return { hasOverlap: false };
+      }
+
+      const newStart = parseReservationDate(startDate);
+      const newEnd = parseReservationDate(endDate);
+
+      // Verificar sobreposição: dois intervalos se sobrepõem se start1 <= end2 AND start2 <= end1
+      for (const existing of existingReservations) {
+        const existingStart = parseAngolaDate(existing.start_date);
+        const existingEnd = parseAngolaDate(existing.end_date);
+
+        // Verificar se há sobreposição
+        if (newStart <= existingEnd && existingStart <= newEnd) {
+          return {
+            hasOverlap: true,
+            overlappingReservation: existing,
+          };
+        }
+      }
+
+      return { hasOverlap: false };
+    } catch (error) {
       console.error("Error checking overlaps:", error);
       return { hasOverlap: false };
     }
-
-    if (!existingReservations || existingReservations.length === 0) {
-      return { hasOverlap: false };
-    }
-
-    const newStart = parseReservationDate(startDate);
-    const newEnd = parseReservationDate(endDate);
-
-    // Verificar sobreposição: dois intervalos se sobrepõem se start1 <= end2 AND start2 <= end1
-    for (const existing of existingReservations) {
-      const existingStart = parseAngolaDate(existing.start_date);
-      const existingEnd = parseAngolaDate(existing.end_date);
-
-      // Verificar se há sobreposição
-      if (newStart <= existingEnd && existingStart <= newEnd) {
-        return {
-          hasOverlap: true,
-          overlappingReservation: existing,
-        };
-      }
-    }
-
-    return { hasOverlap: false };
   };
 
   const calculateTotal = async () => {
@@ -218,8 +227,9 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
         return;
       }
 
-      // Obter usuário autenticado
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+      // Obter sessão atual (mais seguro que getUser, evita chamadas desnecessárias)
+      const { data: { session } } = await withSupabaseLimit(() => supabase.auth.getSession());
+      const authUser = session?.user ?? null;
 
       // Preparar dados para salvar, removendo campos que podem não existir no banco ainda
       const dataToSave: any = {
@@ -251,20 +261,24 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
       }
 
       if (reservation) {
-        const { error } = await supabase
-          .from("reservations")
-          .update(dataToSave)
-          .eq("id", reservation.id);
+        const { error } = (await withSupabaseLimit(() =>
+          supabase
+            .from("reservations")
+            .update(dataToSave)
+            .eq("id", reservation.id)
+        )) as any;
 
         if (error) {
           // Se o erro for sobre colunas que não existem, tentar novamente sem elas
           if (error.message.includes("with_delivery") || error.message.includes("with_pickup")) {
             delete dataToSave.with_delivery;
             delete dataToSave.with_pickup;
-            const { error: retryError } = await supabase
-              .from("reservations")
-              .update(dataToSave)
-              .eq("id", reservation.id);
+            const { error: retryError } = (await withSupabaseLimit(() =>
+              supabase
+                .from("reservations")
+                .update(dataToSave)
+                .eq("id", reservation.id)
+            )) as any;
             if (retryError) throw retryError;
           } else {
             throw error;
@@ -272,16 +286,18 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
         }
         toast.success("Reserva atualizada com sucesso");
       } else {
-        const { error } = await supabase.from("reservations").insert([dataToSave]);
+        const { error } = (await withSupabaseLimit(() =>
+          supabase.from("reservations").insert([dataToSave])
+        )) as any;
 
         if (error) {
           // Se o erro for sobre colunas que não existem, tentar novamente sem elas
           if (error.message.includes("with_delivery") || error.message.includes("with_pickup")) {
             delete dataToSave.with_delivery;
             delete dataToSave.with_pickup;
-            const { error: retryError } = await supabase
-              .from("reservations")
-              .insert([dataToSave]);
+            const { error: retryError } = (await withSupabaseLimit(() =>
+              supabase.from("reservations").insert([dataToSave])
+            )) as any;
             if (retryError) throw retryError;
           } else {
             throw error;
@@ -293,6 +309,15 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
       onClose();
     } catch (error: any) {
       logError(error, "ReservationForm");
+      
+      // Não fazer logout em caso de erro de autenticação temporário
+      // Apenas mostrar mensagem de erro
+      if (error?.message?.includes("JWT") || error?.message?.includes("session") || error?.status === 401) {
+        toast.error("Sessão expirada. Por favor, faça login novamente.");
+        // Não redirecionar automaticamente - deixar o Layout.tsx tratar isso
+        return;
+      }
+      
       const errorMessage = handleError(error, "Erro ao salvar reserva");
       toast.error(errorMessage);
     } finally {
@@ -400,17 +425,6 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
               <SelectItem value="cancelled">Cancelada</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="created_by">Criado Por</Label>
-          <Input
-            id="created_by"
-            type="text"
-            value={formData.created_by}
-            onChange={(e) => setFormData({ ...formData, created_by: e.target.value })}
-            placeholder="Nome do funcionário que criou a reserva"
-          />
         </div>
 
         <div className="flex flex-wrap items-center gap-4 pt-6">

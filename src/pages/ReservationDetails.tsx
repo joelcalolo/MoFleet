@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Reservation } from "@/pages/Reservations";
 import { Label } from "@/components/ui/label";
+import { getEmployeeName } from "@/lib/userUtils";
 
 const ReservationDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +20,7 @@ const ReservationDetails = () => {
   const [loading, setLoading] = useState(true);
   const [hasCheckout, setHasCheckout] = useState(false);
   const [hasCheckin, setHasCheckin] = useState(false);
+  const [createdByName, setCreatedByName] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -40,7 +42,24 @@ const ReservationDetails = () => {
 
       if (error) throw error;
 
-      setReservation(data as Reservation);
+      const reservationData = data as Reservation & {
+        created_by_user_id?: string | null;
+        created_by_company_user_id?: string | null;
+      };
+
+      setReservation(reservationData);
+
+      // Buscar nome do funcionário que criou a reserva
+      if (reservationData.created_by_user_id || reservationData.created_by_company_user_id) {
+        const name = await getEmployeeName(
+          reservationData.created_by_user_id || null,
+          reservationData.created_by_company_user_id || null
+        );
+        setCreatedByName(name);
+      } else if (reservationData.created_by) {
+        // Fallback para campo antigo created_by (texto)
+        setCreatedByName(reservationData.created_by);
+      }
 
       // Verificar se tem checkout e checkin
       const { data: checkout } = await supabase
@@ -222,7 +241,7 @@ const ReservationDetails = () => {
                 </div>
                 <div class="info-item">
                   <span class="info-label">Criado Por</span>
-                  <span class="info-value">${reservation.created_by || "N/A"}</span>
+                  <span class="info-value">${createdByName || reservation.created_by || "N/A"}</span>
                 </div>
                 <div class="info-item">
                   <span class="info-label">Checkout</span>
@@ -385,7 +404,7 @@ const ReservationDetails = () => {
               </div>
               <div>
                 <Label className="text-sm text-muted-foreground">Criado Por</Label>
-                <p className="font-semibold">{reservation.created_by || "N/A"}</p>
+                <p className="font-semibold">{createdByName || reservation.created_by || "N/A"}</p>
               </div>
               <div>
                 <Label className="text-sm text-muted-foreground">Checkout</Label>
