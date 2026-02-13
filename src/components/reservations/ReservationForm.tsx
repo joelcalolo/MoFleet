@@ -25,6 +25,8 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
   const [selectedCar, setSelectedCar] = useState<Car | null>(null);
   const [overlapError, setOverlapError] = useState<string | null>(null);
   
+  const [canSelectEmployee, setCanSelectEmployee] = useState(false);
+  const [employees, setEmployees] = useState<Array<{ user_id: string; name: string | null; email: string | null }>>([]);
   const [formData, setFormData] = useState({
     car_id: reservation?.car_id || "",
     customer_id: reservation?.customer_id || "",
@@ -43,6 +45,7 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
     status: (reservation?.status as any) || "pending",
     deposit_paid: reservation?.deposit_paid || false,
     notes: reservation?.notes || "",
+    created_by_user_id: (reservation as any)?.created_by_user_id ?? "",
   });
 
   // Utilitário para interpretar datas de reserva:
@@ -55,6 +58,28 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
 
   useEffect(() => {
     fetchCarsAndCustomers();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await withSupabaseLimit(() => supabase.auth.getSession());
+      if (!session?.user) return;
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("role")
+        .eq("user_id", session.user.id)
+        .single();
+      if (profile?.role !== "admin" && profile?.role !== "owner") return;
+      setCanSelectEmployee(true);
+      const { data: list } = await supabase.rpc("get_user_profiles_with_email");
+      if (Array.isArray(list)) {
+        setEmployees(list.map((r: { user_id: string; name: string | null; email: string | null }) => ({
+          user_id: r.user_id,
+          name: r.name ?? null,
+          email: r.email ?? null,
+        })));
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -243,12 +268,11 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
         status: formData.status,
         deposit_paid: formData.deposit_paid,
         notes: formData.notes || null,
-        created_by: formData.created_by || null,
       };
 
-      // Registrar quem fez a ação (auditoria) - apenas ao criar nova reserva
-      if (!reservation && authUser) {
-        dataToSave.created_by_user_id = authUser.id;
+      const chosenUserId = formData.created_by_user_id?.trim() || authUser?.id;
+      if (chosenUserId) {
+        dataToSave.created_by_user_id = chosenUserId;
       }
 
       // Adicionar campos opcionais apenas se a migration foi aplicada
@@ -426,6 +450,28 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
             </SelectContent>
           </Select>
         </div>
+
+        {canSelectEmployee && (
+          <div className="space-y-2">
+            <Label htmlFor="created_by_user_id">Registado por</Label>
+            <Select
+              value={formData.created_by_user_id || "__current__"}
+              onValueChange={(value) => setFormData({ ...formData, created_by_user_id: value === "__current__" ? "" : value })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Quem fez a reserva" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__current__">Eu (utilizador atual)</SelectItem>
+                {employees.map((emp) => (
+                  <SelectItem key={emp.user_id} value={emp.user_id}>
+                    {emp.name || emp.email || emp.user_id.slice(0, 8)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-4 pt-6">
           <div className="flex items-center space-x-2">

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Edit, Trash2, CarFront, CarTaxiFront, Search } from "lucide-react";
+import { Edit, Trash2, CarFront, CarTaxiFront, Search, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { Reservation } from "@/pages/Reservations";
 import { handleError, logError } from "@/lib/errorHandler";
@@ -55,19 +55,15 @@ export const ReservationList = ({ reservations, loading, onEdit, onRefresh }: Re
   const [employeeNames, setEmployeeNames] = useState<Map<string, string>>(new Map());
   const itemsPerPage = 10;
 
-  // Buscar nomes dos funcionários quando as reservas mudarem
+  // Buscar nomes dos funcionários quando as reservas mudarem (apenas created_by_user_id)
   useEffect(() => {
     const fetchEmployeeNames = async () => {
       const userIds: string[] = [];
-      const companyUserIds: string[] = [];
-
       reservations.forEach((r: any) => {
         if (r.created_by_user_id) userIds.push(r.created_by_user_id);
-        if (r.created_by_company_user_id) companyUserIds.push(r.created_by_company_user_id);
       });
-
-      if (userIds.length > 0 || companyUserIds.length > 0) {
-        const names = await getEmployeeNamesBatch(userIds, companyUserIds);
+      if (userIds.length > 0) {
+        const names = await getEmployeeNamesBatch(userIds);
         setEmployeeNames(names);
       }
     };
@@ -248,9 +244,6 @@ export const ReservationList = ({ reservations, loading, onEdit, onRefresh }: Re
                     if (r.created_by_user_id && employeeNames.has(r.created_by_user_id)) {
                       return employeeNames.get(r.created_by_user_id);
                     }
-                    if (r.created_by_company_user_id && employeeNames.has(r.created_by_company_user_id)) {
-                      return employeeNames.get(r.created_by_company_user_id);
-                    }
                     return r.created_by || "N/A";
                   })()}
                 </TableCell>
@@ -264,6 +257,17 @@ export const ReservationList = ({ reservations, loading, onEdit, onRefresh }: Re
                 </TableCell>
                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                   <div className="flex justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(`${window.location.origin}/reservation/${reservation.id}?openPdf=1`, "_blank");
+                      }}
+                      title="Download PDF"
+                    >
+                      <FileDown className="h-4 w-4" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"

@@ -13,31 +13,22 @@ export interface UserProfile {
   id: string;
   user_id: string;
   name?: string;
+  position?: string;
   role: "owner" | "admin" | "user" | "super_admin";
   is_active: boolean;
   created_at: string;
+  email?: string;
   auth_users?: {
     email?: string;
   };
 }
 
-export interface CompanyUser {
-  id: string;
-  username: string;
-  role: "gerente" | "tecnico";
-  is_active: boolean;
-  created_at: string;
-}
-
-export type User = UserProfile | CompanyUser;
-
 const Users = () => {
   const navigate = useNavigate();
   const [userProfiles, setUserProfiles] = useState<UserProfile[]>([]);
-  const [companyUsers, setCompanyUsers] = useState<CompanyUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
@@ -81,34 +72,13 @@ const Users = () => {
     try {
       setLoading(true);
 
-      // Buscar user_profiles (usuários com email)
-      const { data: profiles, error: profilesError } = await supabase
-        .from("user_profiles")
-        .select(`
-          id,
-          user_id,
-          name,
-          role,
-          is_active,
-          created_at,
-          auth_users:user_id (
-            email
-          )
-        `)
-        .order("created_at", { ascending: false });
+      const { data: profiles, error: profilesError } = await supabase.rpc(
+        "get_user_profiles_with_email"
+      );
 
       if (profilesError) throw profilesError;
 
-      // Buscar company_users (usuários internos)
-      const { data: companyUsersData, error: companyUsersError } = await supabase
-        .from("company_users")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (companyUsersError) throw companyUsersError;
-
       setUserProfiles((profiles || []) as UserProfile[]);
-      setCompanyUsers((companyUsersData || []) as CompanyUser[]);
     } catch (error) {
       console.error("Error fetching users:", error);
       toast.error("Erro ao carregar funcionários");
@@ -117,7 +87,7 @@ const Users = () => {
     }
   };
 
-  const handleEdit = (user: User) => {
+  const handleEdit = (user: UserProfile) => {
     setEditingUser(user);
     setShowForm(true);
   };
@@ -159,7 +129,6 @@ const Users = () => {
         ) : (
           <UserList
             userProfiles={userProfiles}
-            companyUsers={companyUsers}
             loading={loading}
             onEdit={handleEdit}
             onRefresh={fetchUsers}

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Reservation } from "@/pages/Reservations";
@@ -33,11 +34,12 @@ interface CheckinFormProps {
 
 export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: CheckinFormProps) => {
   const [loading, setLoading] = useState(false);
-  
-  // Inicializar com data/hora atual
+  const [canSelectEmployee, setCanSelectEmployee] = useState(false);
+  const [employees, setEmployees] = useState<Array<{ user_id: string; name: string | null; email: string | null }>>([]);
+
   const now = new Date();
   const [formData, setFormData] = useState({
-    checkin_datetime: formatDateTimeLocal(now), // Campo de data/hora
+    checkin_datetime: formatDateTimeLocal(now),
     final_km: "",
     received_by: "",
     deposit_returned: false,
@@ -45,7 +47,26 @@ export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: Check
     fines_amount: "",
     extra_fees_amount: "",
     notes: "",
+    created_by_user_id: "",
   });
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase.from("user_profiles").select("role").eq("user_id", user.id).single();
+      if (profile?.role !== "admin" && profile?.role !== "owner") return;
+      setCanSelectEmployee(true);
+      const { data: list } = await supabase.rpc("get_user_profiles_with_email");
+      if (Array.isArray(list)) {
+        setEmployees(list.map((r: { user_id: string; name: string | null; email: string | null }) => ({
+          user_id: r.user_id,
+          name: r.name ?? null,
+          email: r.email ?? null,
+        })));
+      }
+    })();
+  }, []);
 
   const [extraDays, setExtraDays] = useState(0);
   const [extraDaysAmount, setExtraDaysAmount] = useState(0);
@@ -193,9 +214,9 @@ export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: Check
         notes: formData.notes || null,
       };
 
-      // Registrar quem fez a ação (auditoria)
-      if (authUser) {
-        checkinData.created_by_user_id = authUser.id;
+      const chosenUserId = formData.created_by_user_id?.trim() || authUser?.id;
+      if (chosenUserId) {
+        checkinData.created_by_user_id = chosenUserId;
       }
 
       // Se houver dias extras, adicionar ao extra_fees_amount
@@ -240,13 +261,7 @@ export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: Check
         .from("checkins")
         .insert([checkinData]);
 
-      if (checkinError) {
-        // Se o erro for sobre company_id não existir, informar sobre a migration
-        if (checkinError.message.includes("company_id")) {
-          throw new Error("A migration para adicionar company_id não foi executada. Por favor, execute a migration 20250115000003_update_checkouts_checkins.sql");
-        }
-        throw checkinError;
-      }
+      if (checkinError) throw checkinError;
 
       // Atualizar status da reserva para "completed"
       const { error: reservationError } = await supabase
@@ -412,6 +427,28 @@ export const CheckinForm = ({ reservation, checkout, onClose, onSuccess }: Check
           disabled={loading}
         />
       </div>
+
+      {canSelectEmployee && (
+        <div className="space-y-2">
+          <Label htmlFor="created_by_user_id">Funcionário que registou a entrada</Label>
+          <Select
+            value={formData.created_by_user_id || "__current__"}
+            onValueChange={(value) => setFormData({ ...formData, created_by_user_id: value === "__current__" ? "" : value })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__current__">Eu (utilizador atual)</SelectItem>
+              {(employees ?? []).map((emp) => (
+                <SelectItem key={emp.user_id} value={emp.user_id}>
+                  {emp.name || emp.email || emp.user_id.slice(0, 8)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="space-y-2">
         <div className="flex items-center space-x-2">

@@ -146,12 +146,17 @@ const Auth = () => {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
 
         if (error) throw error;
+
+        // Garantir que a sessão está disponível antes de navegar (evita 401 na primeira request)
+        if (data.session) {
+          await supabase.auth.refreshSession();
+        }
 
         toast.success("Login realizado com sucesso");
         navigate("/dashboard");

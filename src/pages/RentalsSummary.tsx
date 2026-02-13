@@ -135,38 +135,10 @@ const RentalsSummary = () => {
         checkinByReservationId.set(ch.reservation_id, ch);
       });
 
-      // 3) Coletar IDs de company_users e buscar numa única query
-      const companyUserIds = new Set<string>();
-      checkoutList.forEach((c) => {
-        if (c.created_by_company_user_id) companyUserIds.add(c.created_by_company_user_id);
-      });
-      (checkinsList || []).forEach((ch: any) => {
-        if (ch.created_by_company_user_id) companyUserIds.add(ch.created_by_company_user_id);
-      });
-
-      let companyUserMap: Record<string, string> = {};
-      if (companyUserIds.size > 0) {
-        const { data: companyUsers } = await withSupabaseLimit(() =>
-          supabase
-            .from("company_users")
-            .select("id, username")
-            .in("id", Array.from(companyUserIds))
-        );
-        (companyUsers || []).forEach((u: any) => {
-          companyUserMap[u.id] = u.username ?? null;
-        });
-      }
-
       const rentalsData: RentalSummary[] = checkoutList.map((checkout) => {
         const checkin = checkinByReservationId.get(checkout.reservation_id) ?? null;
         const checkoutCreatedByUser = checkout.created_by_user_id ? "Proprietário" : null;
-        const checkoutCreatedByCompanyUser = checkout.created_by_company_user_id
-          ? companyUserMap[checkout.created_by_company_user_id] ?? null
-          : null;
         const checkinCreatedByUser = checkin?.created_by_user_id ? "Proprietário" : null;
-        const checkinCreatedByCompanyUser = checkin?.created_by_company_user_id
-          ? companyUserMap[checkin.created_by_company_user_id] ?? null
-          : null;
 
         return {
           id: checkout.id,
@@ -179,9 +151,9 @@ const RentalsSummary = () => {
           driver_name: checkout.driver_name ?? null,
           received_by: checkin?.received_by ?? null,
           checkout_created_by_user: checkoutCreatedByUser,
-          checkout_created_by_company_user: checkoutCreatedByCompanyUser,
+          checkout_created_by_company_user: null,
           checkin_created_by_user: checkinCreatedByUser,
-          checkin_created_by_company_user: checkinCreatedByCompanyUser,
+          checkin_created_by_company_user: null,
           deposit_returned: checkin?.deposit_returned ?? false,
           deposit_returned_amount: checkin?.deposit_returned_amount ?? 0,
           fines_amount: checkin?.fines_amount ?? 0,

@@ -13,16 +13,25 @@ interface LayoutProps {
   children: ReactNode;
 }
 
+interface CompanyBranding {
+  name: string;
+  logo_url: string | null;
+}
+
 const Layout = ({ children }: LayoutProps) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState<User | null>(null);
+  const [company, setCompany] = useState<CompanyBranding | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [stockMenuOpen, setStockMenuOpen] = useState(false);
   const isMobile = useIsMobile();
+
+  const logoUrl = company?.logo_url || "/logo.png";
+  const appName = company?.name || "MoFleet";
 
   useEffect(() => {
     let cancelled = false;
@@ -54,18 +63,116 @@ const Layout = ({ children }: LayoutProps) => {
   }, [navigate, location.pathname]);
 
   useEffect(() => {
+    if (!user) {
+      setCompany(null);
+      return;
+    }
+    let cancelled = false;
+    supabase
+      .from("companies")
+      .select("name, logo_url")
+      .limit(1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        if (data) setCompany({ name: data.name || "", logo_url: data.logo_url ?? null });
+        else setCompany(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const checkSuperAdmin = async () => {
       if (user?.id) {
-        const { data: profile } = await supabase
+        // Verificar sessão primeiro
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          console.error('Layout: Erro ao verificar sessão:', sessionError);
+          if (!cancelled) {
+            setIsSuperAdmin(false);
+            setUserRole(null);
+          }
+          return;
+        }
+        
+        if (!session) {
+          console.warn('Layout: Nenhuma sessão encontrada para o usuário:', user.id);
+          if (!cancelled) {
+            setIsSuperAdmin(false);
+            setUserRole(null);
+          }
+          return;
+        }
+        
+        // Buscar role e is_active
+        const { data: profile, error } = await supabase
           .from("user_profiles")
-          .select("role")
+          .select("role, is_active")
           .eq("user_id", user.id)
           .maybeSingle();
+        
+        if (error) {
+          console.error('Layout: Erro ao buscar perfil:', error);
+          // Se for erro 401 ou erro relacionado a autenticação, tentar refresh do token
+          if (error.code === 'PGRST301' || error.status === 401 || error.code === '22023') {
+            console.log('Layout: Erro de autenticação detectado, tentando refresh...');
+            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+            if (refreshError) {
+              console.error('Layout: Erro ao fazer refresh do token:', refreshError);
+              // Se o refresh falhar, redirecionar para login
+              if (!cancelled) {
+                await supabase.auth.signOut();
+                navigate("/auth");
+              }
+            } else if (refreshData.session) {
+              // Se o refresh funcionou, tentar buscar o perfil novamente
+              console.log('Layout: Token atualizado, tentando buscar perfil novamente...');
+              const { data: retryProfile, error: retryError } = await supabase
+                .from("user_profiles")
+                .select("role, is_active")
+                .eq("user_id", user.id)
+                .maybeSingle();
+              
+              if (!retryError && retryProfile && !cancelled) {
+                const isActive = retryProfile?.is_active === true || retryProfile?.is_active === null;
+                setIsSuperAdmin(retryProfile?.role === 'super_admin' && isActive);
+                setUserRole(isActive ? (retryProfile?.role || null) : null);
+                console.log('Layout: Perfil encontrado após refresh:', { 
+                  role: retryProfile?.role, 
+                  is_active: retryProfile?.is_active 
+                });
+                return;
+              }
+              // Se a segunda tentativa falhou, deslogar e redirecionar
+              if (retryError && !cancelled) {
+                await supabase.auth.signOut();
+                navigate("/auth");
+                return;
+              }
+            }
+          }
+          if (!cancelled) {
+            setIsSuperAdmin(false);
+            setUserRole(null);
+          }
+          return;
+        }
+        
         if (!cancelled) {
-          setIsSuperAdmin(profile?.role === 'super_admin');
-          setUserRole(profile?.role || null);
+          console.log('Layout: Perfil encontrado:', { 
+            role: profile?.role, 
+            is_active: profile?.is_active,
+            user_id: user.id 
+          });
+          
+          // Só definir role se is_active for true (ou null para compatibilidade)
+          const isActive = profile?.is_active === true || profile?.is_active === null;
+          setIsSuperAdmin(profile?.role === 'super_admin' && isActive);
+          setUserRole(isActive ? (profile?.role || null) : null);
         }
       } else {
         if (!cancelled) {
@@ -80,14 +187,14 @@ const Layout = ({ children }: LayoutProps) => {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]); // Depender apenas de user?.id em vez de user inteiro
+  }, [user?.id, navigate]); // Adicionar navigate como dependência
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
   };
 
-  // Menu principal - Reservas em destaque
+  // Menu principal - Reservas em destaque (Funcionários fica só no rodapé do sidebar)
   const mainMenuItems = [
     { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
     { icon: UserCircle, label: "Reservas", path: "/reservations", highlight: true },
@@ -97,10 +204,6 @@ const Layout = ({ children }: LayoutProps) => {
     { icon: Truck, label: "Frota", path: "/fleet" },
     { icon: FileText, label: "Resumo de Alugueres", path: "/rentals-summary" },
     { icon: Package, label: "Stock", path: "/inventory" },
-    // Mostrar Funcionários apenas para admins/owners
-    ...(userRole === 'admin' || userRole === 'owner' || isSuperAdmin 
-      ? [{ icon: Users, label: "Funcionários", path: "/users" }] 
-      : []),
   ];
 
   // Submenu de gestão de stock
@@ -145,8 +248,8 @@ const Layout = ({ children }: LayoutProps) => {
               <div className="h-full flex flex-col">
                 <div className="border-b border-border p-4">
                   <div className="flex items-center gap-2">
-                    <img src="/logo.png" alt="MoFleet" className="h-8 w-auto" />
-                    <h1 className="text-lg font-bold">MoFleet</h1>
+                    <img src={logoUrl} alt={appName} className="h-8 w-auto object-contain" />
+                    <h1 className="text-lg font-bold truncate">{appName}</h1>
                   </div>
                 </div>
                 <nav className="flex-1 overflow-y-auto space-y-2 p-4">
@@ -263,8 +366,8 @@ const Layout = ({ children }: LayoutProps) => {
             </SheetContent>
           </Sheet>
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="MoFleet" className="h-8 w-auto" />
-            <h1 className="text-lg font-bold">MoFleet</h1>
+            <img src={logoUrl} alt={appName} className="h-8 w-auto object-contain bg-transparent" style={{ background: "transparent" }} />
+            <h1 className="text-lg font-bold truncate">{appName}</h1>
           </div>
         </div>
       )}
@@ -281,11 +384,13 @@ const Layout = ({ children }: LayoutProps) => {
             "border-b border-border",
             sidebarCollapsed ? "p-2" : "p-4"
           )}>
-            <div className="flex items-center justify-between">
-              {!sidebarCollapsed && (
-                <div className="flex items-center gap-2">
-                  <img src="/logo.png" alt="MoFleet" className="h-8 w-auto" />
-                  <h1 className="text-lg font-bold">MoFleet</h1>
+            <div className={cn("flex items-center", sidebarCollapsed ? "flex-col gap-2" : "justify-between")}>
+              {sidebarCollapsed ? (
+                <img src={logoUrl} alt={appName} className="h-8 w-auto object-contain bg-transparent" style={{ background: "transparent" }} />
+              ) : (
+                <div className="flex items-center gap-2 min-w-0">
+                  <img src={logoUrl} alt={appName} className="h-8 w-auto object-contain shrink-0 bg-transparent" style={{ background: "transparent" }} />
+                  <h1 className="text-lg font-bold truncate">{appName}</h1>
                 </div>
               )}
               <Button

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,16 +18,36 @@ interface CheckoutFormProps {
 
 export const CheckoutForm = ({ reservation, onClose, onSuccess }: CheckoutFormProps) => {
   const [loading, setLoading] = useState(false);
-  
-  // Inicializar com data/hora atual
+  const [canSelectEmployee, setCanSelectEmployee] = useState(false);
+  const [employees, setEmployees] = useState<Array<{ user_id: string; name: string | null; email: string | null }>>([]);
+
   const now = new Date();
   const [formData, setFormData] = useState({
-    checkout_datetime: formatDateTimeLocal(now), // Campo de data/hora
+    checkout_datetime: formatDateTimeLocal(now),
     initial_km: "",
     delivered_by: "",
     driver_name: "",
     notes: "",
+    created_by_user_id: "",
   });
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase.from("user_profiles").select("role").eq("user_id", user.id).single();
+      if (profile?.role !== "admin" && profile?.role !== "owner") return;
+      setCanSelectEmployee(true);
+      const { data: list } = await supabase.rpc("get_user_profiles_with_email");
+      if (Array.isArray(list)) {
+        setEmployees(list.map((r: { user_id: string; name: string | null; email: string | null }) => ({
+          user_id: r.user_id,
+          name: r.name ?? null,
+          email: r.email ?? null,
+        })));
+      }
+    })();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,21 +95,7 @@ export const CheckoutForm = ({ reservation, onClose, onSuccess }: CheckoutFormPr
         .from("checkouts")
         .insert([checkoutData]);
 
-      if (checkoutError) {
-        // Se o erro for sobre permissão, tentar sem company_id (a política verificará pela reserva)
-        if (checkoutError.message.includes("permission") || checkoutError.message.includes("row-level security") || checkoutError.message.includes("policy")) {
-          // Tentar novamente sem company_id - a política RLS verificará através da reserva
-          delete checkoutData.company_id;
-          const { error: retryError } = await supabase
-            .from("checkouts")
-            .insert([checkoutData]);
-          if (retryError) throw retryError;
-        } else if (checkoutError.message.includes("company_id")) {
-          throw new Error("A migration para adicionar company_id não foi executada. Por favor, execute a migration 20250115000003_update_checkouts_checkins.sql");
-        } else {
-          throw checkoutError;
-        }
-      }
+      if (checkoutError) throw checkoutError;
 
       // Atualizar status da reserva para "active"
       const { error: reservationError } = await supabase
@@ -184,6 +190,28 @@ export const CheckoutForm = ({ reservation, onClose, onSuccess }: CheckoutFormPr
           disabled={loading}
         />
       </div>
+
+      {canSelectEmployee && (
+        <div className="space-y-2">
+          <Label htmlFor="created_by_user_id">Funcionário que registou a saída</Label>
+          <Select
+            value={formData.created_by_user_id || "__current__"}
+            onValueChange={(value) => setFormData({ ...formData, created_by_user_id: value === "__current__" ? "" : value })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__current__">Eu (utilizador atual)</SelectItem>
+              {employees.map((emp) => (
+                <SelectItem key={emp.user_id} value={emp.user_id}>
+                  {emp.name || emp.email || emp.user_id.slice(0, 8)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {reservation.with_driver && (
         <div className="space-y-2">

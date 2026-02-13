@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,8 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
 import Layout from "@/components/Layout";
-import { Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon, Upload, Trash2 } from "lucide-react";
 import { handleError, logError } from "@/lib/errorHandler";
+
+const BUCKET_LOGO = "company-logos";
+const MAX_FILE_SIZE_BYTES = 3 * 1024 * 1024; // 3 MB
+const MAX_LOGO_DIMENSION = 512;
+const LOGO_JPEG_QUALITY = 0.82;
+/** PNG/WebP preservam transparência; JPEG não. */
+const PRESERVE_TRANSPARENCY_TYPES = ["image/png", "image/webp"];
 
 interface Company {
   id: string;
@@ -23,6 +30,9 @@ const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [company, setCompany] = useState<Company | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -35,43 +45,48 @@ const Settings = () => {
     fetchCompany();
   }, []);
 
-  const fetchCompany = async () => {
-    try {
-      // Buscar o perfil do usuário para obter o company_id
+  useEffect(() => {
+    (async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("company_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (!profile) {
-        toast.error("Perfil de usuário não encontrado");
+      if (!user) {
+        setUserRole(null);
         return;
       }
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      setUserRole(profile?.role ?? null);
+    })();
+  }, []);
 
-      // Buscar dados da empresa
+  const fetchCompany = async () => {
+    try {
       const { data: companyData, error } = await supabase
         .from("companies")
         .select("*")
-        .eq("id", profile.company_id)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
       if (error) throw error;
 
-      setCompany(companyData);
-      setFormData({
-        name: companyData.name || "",
-        email: companyData.email || "",
-        phone: companyData.phone || "",
-        address: companyData.address || "",
-        tax_id: companyData.tax_id || "",
-      });
+      if (companyData) {
+        setCompany(companyData);
+        setFormData({
+          name: companyData.name || "",
+          email: companyData.email || "",
+          phone: companyData.phone || "",
+          address: companyData.address || "",
+          tax_id: companyData.tax_id || "",
+        });
+      } else {
+        setCompany(null);
+        setFormData({ name: "", email: "", phone: "", address: "", tax_id: "" });
+      }
     } catch (error: any) {
       logError(error, "Settings - Fetch Company");
-      const errorMessage = handleError(error, "Erro ao carregar dados da empresa");
+      const errorMessage = handleError(error, "Erro ao carregar dados da organização");
       toast.error(errorMessage);
     } finally {
       setLoading(false);
@@ -80,29 +95,45 @@ const Settings = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!company) return;
-
     setSaving(true);
 
     try {
-      const { error } = await supabase
-        .from("companies")
-        .update({
-          name: formData.name,
-          email: formData.email,
-          phone: formData.phone || null,
-          address: formData.address || null,
-          tax_id: formData.tax_id || null,
-        })
-        .eq("id", company.id);
+      if (company) {
+        const { error } = await supabase
+          .from("companies")
+          .update({
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone || null,
+            address: formData.address || null,
+            tax_id: formData.tax_id || null,
+            logo_url: company.logo_url ?? undefined,
+          })
+          .eq("id", company.id);
 
-      if (error) throw error;
+        if (error) throw error;
+        toast.success("Dados da organização atualizados com sucesso");
+      } else {
+        const { data: newCompany, error } = await supabase
+          .from("companies")
+          .insert({
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone || null,
+            address: formData.address || null,
+            tax_id: formData.tax_id || null,
+          })
+          .select("id, name, email, phone, address, tax_id")
+          .single();
 
-      toast.success("Dados da empresa atualizados com sucesso");
+        if (error) throw error;
+        setCompany(newCompany);
+        toast.success("Dados da organização guardados com sucesso");
+      }
       fetchCompany();
     } catch (error: any) {
       logError(error, "Settings - Update Company");
-      const errorMessage = handleError(error, "Erro ao atualizar dados da empresa");
+      const errorMessage = handleError(error, "Erro ao guardar dados da organização");
       toast.error(errorMessage);
     } finally {
       setSaving(false);
@@ -128,6 +159,169 @@ const Settings = () => {
       logError(error, "Settings - Reset Password");
       const errorMessage = handleError(error, "Erro ao enviar email de redefinição");
       toast.error(errorMessage);
+    }
+  };
+
+  const canManageLogo = userRole === "admin" || userRole === "owner";
+
+  const optimizeImage = (file: File): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const img = document.createElement("img");
+      const url = URL.createObjectURL(file);
+      const usePng = PRESERVE_TRANSPARENCY_TYPES.includes(file.type);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        const needsResize = w > MAX_LOGO_DIMENSION || h > MAX_LOGO_DIMENSION;
+        if (usePng && !needsResize) {
+          resolve(file.slice(0, file.size, file.type));
+          return;
+        }
+        let targetW = w;
+        let targetH = h;
+        if (needsResize) {
+          if (w >= h) {
+            targetW = MAX_LOGO_DIMENSION;
+            targetH = Math.round((h * MAX_LOGO_DIMENSION) / w);
+          } else {
+            targetH = MAX_LOGO_DIMENSION;
+            targetW = Math.round((w * MAX_LOGO_DIMENSION) / h);
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas not supported"));
+          return;
+        }
+        if (usePng) {
+          ctx.clearRect(0, 0, targetW, targetH);
+        }
+        ctx.drawImage(img, 0, 0, targetW, targetH);
+        if (usePng) {
+          canvas.toBlob(
+            (blob) => (blob ? resolve(blob) : reject(new Error("Failed to create blob"))),
+            "image/png",
+            1
+          );
+        } else {
+          canvas.toBlob(
+            (blob) => (blob ? resolve(blob) : reject(new Error("Failed to create blob"))),
+            "image/jpeg",
+            LOGO_JPEG_QUALITY
+          );
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Failed to load image"));
+      };
+      img.src = url;
+    });
+  };
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !company) return;
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Formato inválido. Use JPEG, PNG ou WebP.");
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      toast.error("Ficheiro demasiado grande. Máximo 3 MB.");
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const blob = await optimizeImage(file);
+      const ext =
+        blob.type === "image/png"
+          ? "png"
+          : blob.type === "image/webp"
+            ? "webp"
+            : "jpg";
+      const path = `${company.id}/logo.${ext}`;
+
+      const doUpload = async () => {
+        const { error: uploadError } = await supabase.storage
+          .from(BUCKET_LOGO)
+          .upload(path, blob, { contentType: blob.type, upsert: true });
+        if (uploadError) throw uploadError;
+      };
+
+      try {
+        await doUpload();
+      } catch (firstErr: any) {
+        const isBucketNotFound =
+          firstErr?.message?.includes("Bucket not found") ||
+          (typeof firstErr?.message === "string" && firstErr.message.toLowerCase().includes("bucket"));
+        if (isBucketNotFound) {
+          const { error: createErr } = await supabase.storage.createBucket(BUCKET_LOGO, {
+            public: true,
+            fileSizeLimit: "3MB",
+            allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+          });
+          if (!createErr) {
+            await doUpload();
+          } else {
+            toast.error(
+              "Crie o bucket no Supabase: Storage > New bucket > nome «company-logos», marque como público."
+            );
+            logError(firstErr, "Settings - Logo Upload (bucket missing)");
+            return;
+          }
+        } else {
+          throw firstErr;
+        }
+      }
+
+      const { data: urlData } = supabase.storage.from(BUCKET_LOGO).getPublicUrl(path);
+      const publicUrl = urlData.publicUrl;
+      const { error: updateError } = await supabase
+        .from("companies")
+        .update({ logo_url: publicUrl })
+        .eq("id", company.id);
+      if (updateError) throw updateError;
+      setCompany((prev) => (prev ? { ...prev, logo_url: publicUrl } : null));
+      toast.success("Logo atualizado com sucesso");
+    } catch (err: any) {
+      logError(err, "Settings - Logo Upload");
+      toast.error(handleError(err, "Erro ao carregar o logo"));
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!company?.logo_url) return;
+    setUploadingLogo(true);
+    try {
+      await supabase.storage.from(BUCKET_LOGO).remove([
+        `${company.id}/logo.jpg`,
+        `${company.id}/logo.png`,
+      ]);
+      // ignore storage errors (e.g. file already missing)
+    } catch {
+      // continue to clear logo_url in DB
+    }
+    try {
+      const { error } = await supabase
+        .from("companies")
+        .update({ logo_url: null })
+        .eq("id", company.id);
+      if (error) throw error;
+      setCompany((prev) => (prev ? { ...prev, logo_url: undefined } : null));
+      toast.success("Logo removido");
+    } catch (err: any) {
+      logError(err, "Settings - Remove Logo");
+      toast.error(handleError(err, "Erro ao remover o logo"));
+    } finally {
+      setUploadingLogo(false);
     }
   };
 
@@ -221,6 +415,59 @@ const Settings = () => {
                     disabled={saving}
                   />
                 </div>
+
+                {canManageLogo && (
+                  <div className="space-y-3 pt-2 border-t">
+                    <Label>Logo da empresa</Label>
+                    <div className="flex flex-wrap items-center gap-4">
+                      {company?.logo_url && (
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={company.logo_url}
+                            alt="Logo"
+                            className="h-16 w-auto max-w-[200px] object-contain rounded border bg-transparent"
+                            style={{ background: "transparent" }}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRemoveLogo}
+                            disabled={uploadingLogo}
+                          >
+                            <Trash2 className="h-4 w-4 mr-1" />
+                            Remover
+                          </Button>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          className="sr-only"
+                          onChange={handleLogoUpload}
+                          disabled={uploadingLogo || !company}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={uploadingLogo || !company}
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <Upload className="h-4 w-4 mr-1" />
+                          {uploadingLogo ? "A carregar..." : "Carregar logo"}
+                        </Button>
+                      </div>
+                    </div>
+                    {!company && (
+                      <p className="text-sm text-muted-foreground">
+                        Guarde os dados da empresa primeiro para poder carregar o logo.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex justify-end">
                   <Button type="submit" disabled={saving}>

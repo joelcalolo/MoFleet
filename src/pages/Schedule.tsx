@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import Layout from "@/components/Layout";
 import { Card } from "@/components/ui/card";
@@ -19,6 +20,7 @@ interface ScheduleReservation {
 }
 
 const Schedule = () => {
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [reservations, setReservations] = useState<ScheduleReservation[]>([]);
   const [cars, setCars] = useState<any[]>([]);
@@ -140,10 +142,12 @@ const Schedule = () => {
                           key={day.toISOString()}
                           className={`h-12 rounded border flex items-center justify-center text-xs ${
                             reservation
-                              ? statusColors[reservation.status] || "bg-muted"
+                              ? (statusColors[reservation.status] || "bg-muted") + " cursor-pointer hover:opacity-90"
                               : "bg-card border-border"
                           }`}
-                          title={reservation?.customers?.name}
+                          title={reservation ? `Ver reserva${reservation.customers?.name ? ` – ${reservation.customers.name}` : ""}` : undefined}
+                          onClick={() => reservation && navigate(`/reservation/${reservation.id}`)}
+                          role={reservation ? "button" : undefined}
                         >
                           {format(day, "d")}
                         </div>
