@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import Layout from "@/components/Layout";
 import { CustomerForm } from "@/components/customers/CustomerForm";
 import { CustomerList } from "@/components/customers/CustomerList";
+import { useCompany } from "@/hooks/useCompany";
 
 export interface Customer {
   id: string;
@@ -25,16 +26,22 @@ const Customers = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const { companyId, loading: companyLoading } = useCompany();
 
   useEffect(() => {
-    fetchCustomers();
-  }, []);
+    if (!companyLoading && companyId) {
+      fetchCustomers();
+    }
+  }, [companyId, companyLoading]);
 
   const fetchCustomers = async () => {
+    if (!companyId) return;
+    
     try {
       const { data, error } = await supabase
         .from("customers")
         .select("*")
+        .eq("company_id", companyId)
         .order("name", { ascending: true });
 
       if (error) throw error;

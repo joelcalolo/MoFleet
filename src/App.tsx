@@ -7,6 +7,7 @@ import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import EmailConfirm from "./pages/EmailConfirm";
+import RegisterCompany from "./pages/RegisterCompany";
 import Cars from "./pages/Cars";
 import Customers from "./pages/Customers";
 import Reservations from "./pages/Reservations";
@@ -43,6 +44,7 @@ const App = () => (
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/auth/confirm" element={<EmailConfirm />} />
+        <Route path="/register-company" element={<RegisterCompany />} />
         <Route path="/cars" element={<Cars />} />
         <Route path="/customers" element={<Customers />} />
         <Route path="/reservations" element={<Reservations />} />

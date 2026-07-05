@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import Layout from "@/components/Layout";
 import { CarForm } from "@/components/cars/CarForm";
 import { CarList } from "@/components/cars/CarList";
+import { useCompany } from "@/hooks/useCompany";
 
 export interface Car {
   id: string;
@@ -35,16 +36,22 @@ const Cars = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingCar, setEditingCar] = useState<Car | null>(null);
+  const { companyId, loading: companyLoading } = useCompany();
 
   useEffect(() => {
-    fetchCars();
-  }, []);
+    if (!companyLoading && companyId) {
+      fetchCars();
+    }
+  }, [companyId, companyLoading]);
 
   const fetchCars = async () => {
+    if (!companyId) return;
+    
     try {
       const { data, error } = await supabase
         .from("cars")
         .select("*")
+        .eq("company_id", companyId)
         .order("brand", { ascending: true });
 
       if (error) throw error;

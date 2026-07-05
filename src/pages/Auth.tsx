@@ -8,21 +8,35 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { handleError, logError } from "@/lib/errorHandler";
+import { useCompany } from "@/hooks/useCompany";
+import { hashPassword } from "@/lib/passwordUtils";
 
 const Auth = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { subdomain } = useCompany();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [companyName, setCompanyName] = useState("");
+  const [companyCode, setCompanyCode] = useState("");
+  const [username, setUsername] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
+  const [isCompanyUserLogin, setIsCompanyUserLogin] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [isResetPassword, setIsResetPassword] = useState(false);
   const [lastAttemptTime, setLastAttemptTime] = useState<number>(0);
+
+  // Auto-fill company code from subdomain if available
+  useEffect(() => {
+    if (subdomain) {
+      setCompanyCode(subdomain);
+      setIsCompanyUserLogin(true);
+    }
+  }, [subdomain]);
 
   useEffect(() => {
     // Verificar se está no modo de redefinição de senha
@@ -142,10 +156,46 @@ const Auth = () => {
       return;
     }
 
+    if (isCompanyUserLogin) {
+      if (!companyCode || !username || !password) {
+        toast.error("Por favor, preencha código da empresa, username e senha");
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
-      if (isLogin) {
+      if (isCompanyUserLogin) {
+        // Hash password before sending to server
+        const hashedPassword = await hashPassword(password);
+        
+        // Company user login using RPC function
+        const { data: authData, error: authError } = await supabase
+          .rpc('authenticate_company_user', {
+            p_subdomain: companyCode,
+            p_username: username,
+            p_password: hashedPassword
+          });
+
+        if (authError) throw authError;
+        
+        if (!authData || authData.length === 0) {
+          toast.error("Código da empresa, username ou senha incorretos");
+          return;
+        }
+
+        // Store company user info in localStorage for session management
+        localStorage.setItem('companyUser', JSON.stringify({
+          id: authData[0].id,
+          company_id: authData[0].company_id,
+          username: authData[0].username,
+          role: authData[0].role
+        }));
+
+        toast.success("Login realizado com sucesso");
+        navigate("/dashboard");
+      } else if (isLogin) {
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -198,6 +248,8 @@ const Auth = () => {
               ? "Defina sua nova senha"
               : isForgotPassword 
               ? "Redefinir senha" 
+              : isCompanyUserLogin
+              ? "Faça login como usuário da empresa"
               : isLogin 
               ? "Faça login para acessar o sistema" 
               : "Crie sua conta de gestor"}
@@ -252,7 +304,49 @@ const Auth = () => {
               </>
             ) : (
               <>
-                {!isLogin && !isForgotPassword && (
+                {isCompanyUserLogin && !isForgotPassword && (
+                  <div className="space-y-2">
+                    <Label htmlFor="companyCode">Código da Empresa *</Label>
+                    <Input
+                      id="companyCode"
+                      type="text"
+                      placeholder="empresa1"
+                      value={companyCode}
+                      onChange={(e) => setCompanyCode(e.target.value)}
+                      disabled={loading}
+                      required
+                    />
+                  </div>
+                )}
+                {isCompanyUserLogin && !isForgotPassword && (
+                  <div className="space-y-2">
+                    <Label htmlFor="username">Username *</Label>
+                    <Input
+                      id="username"
+                      type="text"
+                      placeholder="seu.username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      disabled={loading}
+                      required
+                    />
+                  </div>
+                )}
+                {!isCompanyUserLogin && !isForgotPassword && (
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="seu@email.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      disabled={loading}
+                      required
+                    />
+                  </div>
+                )}
+                {!isLogin && !isForgotPassword && !isCompanyUserLogin && (
                   <div className="space-y-2">
                     <Label htmlFor="companyName">Nome da Empresa *</Label>
                     <Input
@@ -261,34 +355,6 @@ const Auth = () => {
                       placeholder="Nome da sua empresa"
                       value={companyName}
                       onChange={(e) => setCompanyName(e.target.value)}
-                      disabled={loading}
-                      required
-                    />
-                  </div>
-                )}
-                {isLogin && !isForgotPassword && (
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="seu@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      disabled={loading}
-                      required
-                    />
-                  </div>
-                )}
-                {!isLogin && !isForgotPassword && (
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="seu@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
                       disabled={loading}
                       required
                     />
@@ -358,12 +424,30 @@ const Auth = () => {
                     ? "Carregando..." 
                     : isForgotPassword 
                     ? "Enviar email de redefinição" 
+                    : isCompanyUserLogin
+                    ? "Entrar como Usuário da Empresa"
                     : isLogin 
                     ? "Entrar" 
                     : "Criar Conta"}
                 </Button>
-                {/* Opção "Criar conta" oculta na UI */}
-                {isLogin && !isForgotPassword && (
+                {/* Toggle between regular login and company user login */}
+                {!isForgotPassword && !isResetPassword && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="w-full text-sm"
+                    onClick={() => {
+                      setIsCompanyUserLogin(!isCompanyUserLogin);
+                      setIsLogin(true);
+                    }}
+                    disabled={loading}
+                  >
+                    {isCompanyUserLogin 
+                      ? "Voltar para login de gestor" 
+                      : "Entrar como usuário da empresa"}
+                  </Button>
+                )}
+                {isLogin && !isForgotPassword && !isCompanyUserLogin && (
                   <Button
                     type="button"
                     variant="link"
@@ -372,6 +456,17 @@ const Auth = () => {
                     disabled={loading}
                   >
                     Esqueci minha senha
+                  </Button>
+                )}
+                {isLogin && !isForgotPassword && !isCompanyUserLogin && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="w-full text-sm"
+                    onClick={() => navigate('/register-company')}
+                    disabled={loading}
+                  >
+                    Registrar nova empresa
                   </Button>
                 )}
                 {isForgotPassword && (
