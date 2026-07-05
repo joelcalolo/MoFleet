@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import Layout from "@/components/Layout";
 import { StockEntryForm, StockEntry } from "@/components/inventory/StockEntryForm";
 import { StockEntryList } from "@/components/inventory/StockEntryList";
+import { useCompany } from "@/hooks/useCompany";
 
 const StockEntries = () => {
   const [entries, setEntries] = useState<StockEntry[]>([]);
@@ -14,20 +15,28 @@ const StockEntries = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<StockEntry | null>(null);
+  const { companyId } = useCompany();
 
   useEffect(() => {
     fetchEntries();
     fetchSuppliers();
     fetchParts();
-  }, []);
+  }, [companyId]);
 
   const fetchEntries = async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from("stock_entries")
         .select("*")
         .order("entry_date", { ascending: false })
         .order("created_at", { ascending: false });
+
+      // Filter by company_id if available
+      if (companyId) {
+        query = query.eq("company_id", companyId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       setEntries(data || []);
@@ -40,7 +49,14 @@ const StockEntries = () => {
 
   const fetchSuppliers = async () => {
     try {
-      const { data } = await supabase.from("suppliers").select("id, name");
+      let query = supabase.from("suppliers").select("id, name");
+      
+      // Filter by company_id if available
+      if (companyId) {
+        query = query.eq("company_id", companyId);
+      }
+      
+      const { data } = await query;
       if (data) {
         const supplierMap: Record<string, string> = {};
         data.forEach((s) => {
@@ -55,7 +71,14 @@ const StockEntries = () => {
 
   const fetchParts = async () => {
     try {
-      const { data } = await supabase.from("parts").select("id, name");
+      let query = supabase.from("parts").select("id, name");
+      
+      // Filter by company_id if available
+      if (companyId) {
+        query = query.eq("company_id", companyId);
+      }
+      
+      const { data } = await query;
       if (data) {
         const partMap: Record<string, string> = {};
         data.forEach((p) => {
