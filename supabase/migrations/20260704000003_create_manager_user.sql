@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA extensions;
+
 -- Migration: Create Manager User for Testing
 -- This creates a manager user for testing the company user login
 
@@ -23,7 +25,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.company_users WHERE username = manager_username) THEN
     -- Atualizar senha do usuário existente
     UPDATE public.company_users 
-    SET password_hash = crypt(manager_password, gen_salt('bf'))
+    SET password_hash = extensions.crypt(manager_password, extensions.gen_salt('bf'))
     WHERE username = manager_username;
     RAISE NOTICE 'Usuário gestor atualizado: username=%, senha=%, subdomain=%', manager_username, manager_password, test_subdomain;
   ELSE
@@ -37,7 +39,7 @@ BEGIN
     ) VALUES (
       test_company_id,
       manager_username,
-      crypt(manager_password, gen_salt('bf')),
+      extensions.crypt(manager_password, extensions.gen_salt('bf')),
       'gerente',
       true
     );

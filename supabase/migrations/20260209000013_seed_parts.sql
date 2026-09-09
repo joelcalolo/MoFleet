@@ -155,7 +155,6 @@ INSERT INTO public.stock_entries (
   quantity,
   unit_price,
   purchased_by,
-  purchased_by_name,
   notes
 )
 SELECT 
@@ -170,7 +169,6 @@ SELECT
   p.quantity,
   COALESCE(p.unit_price, 0) AS unit_price,
   COALESCE((SELECT id FROM first_admin_user), (SELECT id FROM auth.users LIMIT 1)) AS purchased_by,
-  'Importação inicial' AS purchased_by_name,
   'Stock inicial - importação de dados' AS notes
 FROM parts_with_stock p
 JOIN part_map pm ON pm.code = p.part_code

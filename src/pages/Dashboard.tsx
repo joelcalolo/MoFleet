@@ -1,10 +1,11 @@
-import { useEffect, useState, useMemo } from "react";
-import { supabase, withSupabaseLimit } from "@/lib/supabaseSafe";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase, withSupabaseLimit, isRateLimitError } from "@/lib/supabaseSafe";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Car, Calendar, DollarSign, AlertCircle, ChevronLeft, ChevronRight, Bell, Users, CheckCircle, XCircle, ChevronDown, ChevronUp } from "lucide-react";
 import Layout from "@/components/Layout";
 import { Button } from "@/components/ui/button";
-import { format, eachDayOfInterval, startOfMonth, endOfMonth, addMonths, startOfDay, isSameDay, differenceInDays, getDay } from "date-fns";
+import { format, eachDayOfInterval, startOfMonth, endOfMonth, addMonths, startOfDay, differenceInDays, getDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Reservation } from "@/pages/Reservations";
@@ -24,7 +25,6 @@ interface Stats {
   carsOut: number;
 }
 
-// Paleta de cores para os carros
 const CAR_COLORS = [
   { bg: "bg-blue-500", border: "border-blue-600", text: "text-blue-700", light: "bg-blue-100" },
   { bg: "bg-green-500", border: "border-green-600", text: "text-green-700", light: "bg-green-100" },
@@ -38,8 +38,207 @@ const CAR_COLORS = [
   { bg: "bg-cyan-500", border: "border-cyan-600", text: "text-cyan-700", light: "bg-cyan-100" },
 ];
 
+// ---- Query FNs (com withSupabaseLimit + retry 429 interno) ----
+
+async function fetchStatsData(): Promise<Stats> {
+  const today = getAngolaDate();
+
+  const [reservationsRes, carsRes, customersRes, checkoutsRes] = (await Promise.all([
+    withSupabaseLimit(() => supabase.from("reservations").select("total_amount, status, end_date")),
+    withSupabaseLimit(() => supabase.from("cars").select("id, is_available")),
+    withSupabaseLimit(() => supabase.from("customers").select("id, is_active")),
+    withSupabaseLimit(() => supabase.from("checkouts").select("id, reservation_id")),
+  ])) as any[];
+
+  // Propaga rate limit para UI dedicada (amarela) e outros erros para UI vermelha
+  const anyRateLimited = [reservationsRes, carsRes, customersRes, checkoutsRes].some((r) => r?.error && isRateLimitError(r.error));
+  if (anyRateLimited) {
+    const err: any = new Error("Rate limited ao carregar stats");
+    err.status = 429;
+    err.code = "over_request_rate_limit";
+    throw err;
+  }
+  const firstError = [reservationsRes, carsRes, customersRes, checkoutsRes].find((r) => r?.error)?.error;
+  if (firstError) throw firstError;
+
+  const allReservations = reservationsRes.data || [];
+  const activeReservations = allReservations.filter((r: any) => ["confirmed", "active"].includes(r.status)).length;
+  const completedReservations = allReservations.filter((r: any) => r.status === "completed").length;
+  const cancelledReservations = allReservations.filter((r: any) => r.status === "cancelled").length;
+  const totalCars = carsRes.data?.length || 0;
+  const availableCars = carsRes.data?.filter((car: any) => car.is_available).length || 0;
+  const totalRevenue = allReservations.reduce((sum: number, r: any) => sum + parseFloat(String(r.total_amount || 0)), 0) || 0;
+  const nextWeek = new Date(today);
+  nextWeek.setDate(today.getDate() + 7);
+  const upcomingReturns = allReservations.filter((r: any) => {
+    const endDate = parseAngolaDate(r.end_date);
+    return endDate >= today && endDate <= nextWeek && r.status === "active";
+  }).length || 0;
+  const totalCustomers = customersRes.data?.filter((c: any) => c.is_active).length || 0;
+
+  let carsOut = 0;
+  const checkouts = checkoutsRes.data || [];
+  if (checkouts.length > 0) {
+    const reservationIds = Array.from(new Set(checkouts.map((c: any) => c.reservation_id).filter(Boolean)));
+    if (reservationIds.length > 0) {
+      const { data: checkinsForCheckouts, error: checkinsError } = (await withSupabaseLimit(() =>
+        supabase.from("checkins").select("reservation_id").in("reservation_id", reservationIds)
+      )) as any;
+      if (checkinsError) {
+        if (isRateLimitError(checkinsError)) {
+          console.warn("[Dashboard] checkins (stats) rate limited — calcula carsOut sem filtro");
+        } else {
+          throw checkinsError;
+        }
+      }
+      const reservationsWithCheckin = new Set((checkinsForCheckouts || []).map((c: any) => c.reservation_id));
+      carsOut = checkinsError ? checkouts.length : checkouts.filter((checkout: any) => !reservationsWithCheckin.has(checkout.reservation_id)).length;
+    }
+  }
+
+  return {
+    activeReservations,
+    availableCars,
+    totalCars,
+    totalRevenue,
+    upcomingReturns,
+    totalCustomers,
+    completedReservations,
+    cancelledReservations,
+    carsOut,
+  };
+}
+
+async function fetchReservationsData(): Promise<Reservation[]> {
+  const { data, error } = (await withSupabaseLimit(() =>
+    supabase
+      .from("reservations")
+      .select(`*, cars (brand, model, license_plate), customers (name, phone)`)
+      .order("start_date", { ascending: false })
+  )) as any;
+
+  if (error) {
+    if (isRateLimitError(error)) {
+      const err: any = new Error(error.message || "Rate limited");
+      err.status = 429;
+      err.code = error.code;
+      throw err;
+    }
+    throw error;
+  }
+
+  const reservationsData = (data as Reservation[]) || [];
+  if (reservationsData.length === 0) return [];
+
+  const reservationIds = reservationsData.map((r) => r.id);
+  const { data: checkinsForReservations, error: checkinError } = (await withSupabaseLimit(() =>
+    supabase.from("checkins").select("reservation_id").in("reservation_id", reservationIds)
+  )) as any;
+
+  if (checkinError) {
+    if (isRateLimitError(checkinError)) {
+      console.warn("[Dashboard] checkins rate limited, retorna sem filtro");
+      return reservationsData;
+    }
+    throw checkinError;
+  }
+
+  const reservationsWithCheckin = new Set((checkinsForReservations || []).map((c: any) => c.reservation_id));
+  return reservationsData.filter((r) => !reservationsWithCheckin.has(r.id));
+}
+
+async function fetchUpcomingReturnsData(): Promise<Array<{ reservation: Reservation; endDate: Date; daysUntil: number }>> {
+  const today = getAngolaDate();
+  const threeDaysBefore = new Date(today);
+  threeDaysBefore.setDate(today.getDate() - 3);
+  const threeDaysLater = new Date(today);
+  threeDaysLater.setDate(today.getDate() + 3);
+
+  const { data: checkouts, error } = await withSupabaseLimit(() =>
+    supabase.from("checkouts").select(`
+        *,
+        reservations!inner (
+          id,
+          car_id,
+          customer_id,
+          start_date,
+          end_date,
+          status,
+          cars (brand, model, license_plate),
+          customers (name, phone)
+        )
+      `)
+  );
+
+  if (error) {
+    if (isRateLimitError(error)) {
+      const err: any = new Error(error.message || "Rate limited");
+      err.status = 429;
+      throw err;
+    }
+    throw error;
+  }
+
+  const returnsData: Array<{ reservation: Reservation; endDate: Date; daysUntil: number }> = [];
+  const checkoutsData = (checkouts || []) as Array<any>;
+  if (checkoutsData.length === 0) return [];
+
+  const reservationIds = Array.from(new Set(checkoutsData.map((c) => (c.reservations as Reservation)?.id).filter(Boolean)));
+  let reservationsWithCheckin = new Set<string>();
+  if (reservationIds.length > 0) {
+    const { data: checkinsForReturns, error: checkinsReturnsError } = (await withSupabaseLimit(() =>
+      supabase.from("checkins").select("reservation_id").in("reservation_id", reservationIds)
+    )) as any;
+    if (checkinsReturnsError) {
+      if (isRateLimitError(checkinsReturnsError)) {
+        console.warn("[Dashboard] checkins (upcomingReturns) rate limited — retorna sem filtro de checkin");
+      } else {
+        throw checkinsReturnsError;
+      }
+    } else {
+      reservationsWithCheckin = new Set((checkinsForReturns || []).map((c: any) => c.reservation_id));
+    }
+  }
+
+  for (const checkout of checkoutsData) {
+    const reservation = checkout.reservations as Reservation;
+    if (!reservation || reservationsWithCheckin.has(reservation.id)) continue;
+    const endDate = parseAngolaDate(reservation.end_date);
+    const daysUntil = differenceInDays(endDate, today);
+    if (endDate >= threeDaysBefore && endDate <= threeDaysLater) {
+      returnsData.push({ reservation, endDate, daysUntil });
+    }
+  }
+  return returnsData.sort((a, b) => a.daysUntil - b.daysUntil);
+}
+
 const Dashboard = () => {
-  const [stats, setStats] = useState<Stats>({
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [expandedAlerts, setExpandedAlerts] = useState<Set<string>>(new Set());
+
+  // React Query — usa defaults globais de App.tsx (staleTime 60s, retry 429→1x, outros→2x)
+  const statsQuery = useQuery({
+    queryKey: ["dashboard", "stats"],
+    queryFn: fetchStatsData,
+    staleTime: 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+
+  const reservationsQuery = useQuery({
+    queryKey: ["dashboard", "reservations"],
+    queryFn: fetchReservationsData,
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+
+  const upcomingReturnsQuery = useQuery({
+    queryKey: ["dashboard", "upcomingReturns"],
+    queryFn: fetchUpcomingReturnsData,
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+  });
+
+  const stats: Stats = statsQuery.data ?? {
     activeReservations: 0,
     availableCars: 0,
     totalCars: 0,
@@ -49,456 +248,80 @@ const Dashboard = () => {
     completedReservations: 0,
     cancelledReservations: 0,
     carsOut: 0,
-  });
-  const [loading, setLoading] = useState(true);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [reservationsLoading, setReservationsLoading] = useState(true);
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [expandedAlerts, setExpandedAlerts] = useState<Set<string>>(new Set());
-
-  // Espalhar requisições no tempo para evitar pico e rate limit
-  useEffect(() => {
-    fetchStats();
-    const t1 = window.setTimeout(() => fetchReservations(), 250);
-    const t2 = window.setTimeout(() => {
-      const fetchUpcomingReturns = async () => {
-        try {
-          const today = getAngolaDate();
-          const threeDaysBefore = new Date(today);
-          threeDaysBefore.setDate(today.getDate() - 3);
-          const threeDaysLater = new Date(today);
-          threeDaysLater.setDate(today.getDate() + 3);
-
-          const { data: checkouts, error } = await withSupabaseLimit(() =>
-            supabase
-              .from("checkouts")
-              .select(`
-                *,
-                reservations!inner (
-                  id,
-                  car_id,
-                  customer_id,
-                  start_date,
-                  end_date,
-                  status,
-                  cars (brand, model, license_plate),
-                  customers (name, phone)
-                )
-              `)
-          );
-
-          if (error) throw error;
-
-          const returnsData: Array<{ reservation: Reservation; endDate: Date; daysUntil: number }> = [];
-          const checkoutsData = (checkouts || []) as Array<any>;
-
-          if (checkoutsData.length > 0) {
-            const reservationIds = Array.from(
-              new Set(
-                checkoutsData.map((c) => (c.reservations as Reservation)?.id).filter(Boolean)
-              )
-            );
-
-            const { data: checkinsForReturns } = await withSupabaseLimit(() =>
-              supabase
-                .from("checkins")
-                .select("reservation_id")
-                .in("reservation_id", reservationIds)
-            );
-
-            const reservationsWithCheckin = new Set(
-              (checkinsForReturns || []).map((c: any) => c.reservation_id)
-            );
-
-            for (const checkout of checkoutsData) {
-              const reservation = checkout.reservations as Reservation;
-              if (!reservation || reservationsWithCheckin.has(reservation.id)) continue;
-
-              const endDate = parseAngolaDate(reservation.end_date);
-              const daysUntil = differenceInDays(endDate, today);
-
-              if (endDate >= threeDaysBefore && endDate <= threeDaysLater) {
-                returnsData.push({ reservation, endDate, daysUntil });
-              }
-            }
-          }
-
-          setUpcomingReturns(returnsData.sort((a, b) => a.daysUntil - b.daysUntil));
-        } catch (err) {
-          console.error("Error fetching upcoming returns:", err);
-        }
-      };
-      fetchUpcomingReturns();
-    }, 500);
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-    };
-  }, []);
-
-  const fetchStats = async () => {
-    setLoading(true);
-
-    try {
-      const today = getAngolaDate();
-
-      const [reservationsRes, carsRes, customersRes, checkoutsRes] = (await Promise.all([
-        withSupabaseLimit(() =>
-          supabase
-            .from("reservations")
-            .select("total_amount, status, end_date")
-        ),
-        withSupabaseLimit(() =>
-          supabase
-            .from("cars")
-            .select("id, is_available")
-        ),
-        withSupabaseLimit(() =>
-          supabase
-            .from("customers")
-            .select("id, is_active")
-        ),
-        withSupabaseLimit(() =>
-          supabase
-            .from("checkouts")
-            .select("id, reservation_id")
-        ),
-      ])) as any[];
-
-      console.log("Dashboard: Data fetched:", {
-        reservations: reservationsRes.data?.length || 0,
-        cars: carsRes.data?.length || 0,
-        customers: customersRes.data?.length || 0,
-        checkouts: checkoutsRes.data?.length || 0,
-        reservationsError: reservationsRes.error,
-        carsError: carsRes.error,
-        customersError: customersRes.error,
-        checkoutsError: checkoutsRes.error
-      });
-
-      if (reservationsRes.error) {
-        console.error("Dashboard: Error fetching reservations:", reservationsRes.error);
-      }
-      if (carsRes.error) {
-        console.error("Dashboard: Error fetching cars:", carsRes.error);
-      }
-      if (customersRes.error) {
-        console.error("Dashboard: Error fetching customers:", customersRes.error);
-      }
-      if (checkoutsRes.error) {
-        console.error("Dashboard: Error fetching checkouts:", checkoutsRes.error);
-      }
-
-      const allReservations = reservationsRes.data || [];
-      const activeReservations = allReservations.filter(r => 
-        ["confirmed", "active"].includes(r.status)
-      ).length;
-      
-      const completedReservations = allReservations.filter(r => 
-        r.status === "completed"
-      ).length;
-      
-      const cancelledReservations = allReservations.filter(r => 
-        r.status === "cancelled"
-      ).length;
-
-      const totalCars = carsRes.data?.length || 0;
-      const availableCars = carsRes.data?.filter(car => car.is_available).length || 0;
-      
-      const totalRevenue = allReservations.reduce(
-        (sum, r) => sum + parseFloat(String(r.total_amount || 0)), 
-        0
-      ) || 0;
-
-      const nextWeek = new Date(today);
-      nextWeek.setDate(today.getDate() + 7);
-
-      const upcomingReturns = allReservations.filter(r => {
-        const endDate = parseAngolaDate(r.end_date);
-        return endDate >= today && endDate <= nextWeek && r.status === "active";
-      }).length || 0;
-
-      const totalCustomers = customersRes.data?.filter(c => c.is_active).length || 0;
-
-      // Carros fora (checkouts sem checkin) - filtrar apenas checkouts da empresa
-      const checkouts = checkoutsRes.data || [];
-      let carsOut = 0;
-
-      if (checkouts.length > 0) {
-        const reservationIds = Array.from(
-          new Set(checkouts.map((c: any) => c.reservation_id).filter(Boolean))
-        );
-
-        const { data: checkinsForCheckouts } = (await withSupabaseLimit(() =>
-          supabase
-            .from("checkins")
-            .select("reservation_id")
-            .in("reservation_id", reservationIds)
-        )) as any;
-
-        const reservationsWithCheckin = new Set(
-          (checkinsForCheckouts || []).map((c: any) => c.reservation_id)
-        );
-
-        carsOut = checkouts.filter(
-          (checkout: any) => !reservationsWithCheckin.has(checkout.reservation_id)
-        ).length;
-      }
-
-      const statsData = {
-        activeReservations,
-        availableCars,
-        totalCars,
-        totalRevenue,
-        upcomingReturns,
-        totalCustomers,
-        completedReservations,
-        cancelledReservations,
-        carsOut,
-      };
-      
-      console.log("Dashboard: Stats calculated:", statsData);
-      setStats(statsData);
-    } catch (error) {
-      console.error("Dashboard: Error fetching stats:", error);
-      console.error("Dashboard: Error details:", JSON.stringify(error, null, 2));
-    } finally {
-      setLoading(false);
-      console.log("Dashboard: fetchStats completed");
-    }
   };
+  const loading = statsQuery.isLoading;
+  const reservations = reservationsQuery.data ?? [];
+  const reservationsLoading = reservationsQuery.isLoading;
+  const upcomingReturns = upcomingReturnsQuery.data ?? [];
 
-  const fetchReservations = async () => {
-    setReservationsLoading(true);
+  const isRateLimited = isRateLimitError(statsQuery.error) || isRateLimitError(reservationsQuery.error) || isRateLimitError(upcomingReturnsQuery.error);
 
-    try {
-      const { data, error } = (await withSupabaseLimit(() =>
-        supabase
-          .from("reservations")
-          .select(`
-            *,
-            cars (brand, model, license_plate),
-            customers (name, phone)
-          `)
-          .order("start_date", { ascending: false })
-      )) as any;
-
-      console.log("Dashboard: Reservations fetched:", {
-        count: data?.length || 0,
-        error: error ? { message: error.message, code: error.code, details: error.details } : null
-      });
-
-      if (error) {
-        console.error("Dashboard: Error fetching reservations:", error);
-        throw error;
-      }
-      
-      // Filtrar reservas que já têm checkin (não devem aparecer no calendário)
-      const reservationsData = (data as Reservation[]) || [];
-
-      if (reservationsData.length === 0) {
-        setReservations([]);
-        return;
-      }
-
-      const reservationIds = reservationsData.map((r) => r.id);
-
-      const { data: checkinsForReservations } = (await withSupabaseLimit(() =>
-        supabase
-          .from("checkins")
-          .select("reservation_id")
-          .in("reservation_id", reservationIds)
-      )) as any;
-
-      const reservationsWithCheckin = new Set(
-        (checkinsForReservations || []).map((c: any) => c.reservation_id)
-      );
-
-      // Remover reservas com checkin da lista
-      const filteredReservations = reservationsData.filter(
-        (r) => !reservationsWithCheckin.has(r.id)
-      );
-
-      setReservations(filteredReservations);
-    } catch (error) {
-      console.error("Error fetching reservations:", error);
-    } finally {
-      setReservationsLoading(false);
-    }
-  };
-
-  // Obter todos os carros únicos das reservas e atribuir cores
   const carColorMap = useMemo(() => {
-    const map = new Map<string, typeof CAR_COLORS[0] & { carId: string; carName: string }>();
-    const activeReservations = reservations.filter(r => r.status !== "cancelled");
+    const map = new Map<string, (typeof CAR_COLORS)[0] & { carId: string; carName: string }>();
+    const activeReservations = reservations.filter((r) => r.status !== "cancelled");
     const uniqueCars = new Map<string, { brand: string; model: string; license_plate: string }>();
-
-    activeReservations.forEach(reservation => {
+    activeReservations.forEach((reservation) => {
       if (reservation.cars && !uniqueCars.has(reservation.car_id)) {
         uniqueCars.set(reservation.car_id, reservation.cars);
       }
     });
-
     let colorIndex = 0;
     uniqueCars.forEach((car, carId) => {
       const color = CAR_COLORS[colorIndex % CAR_COLORS.length];
-      map.set(carId, {
-        ...color,
-        carId,
-        carName: `${car.brand} ${car.model}`,
-      });
+      map.set(carId, { ...color, carId, carName: `${car.brand} ${car.model}` });
       colorIndex++;
     });
-
     return map;
   }, [reservations]);
 
-  // Obter reservas ativas do mês atual
   const monthReservations = useMemo(() => {
     const start = startOfMonth(currentDate);
     const end = endOfMonth(currentDate);
-    
-    return reservations.filter(reservation => {
+    return reservations.filter((reservation) => {
       if (reservation.status === "cancelled") return false;
-      
       const resStart = parseAngolaDate(reservation.start_date);
       const resEnd = parseAngolaDate(reservation.end_date);
-      
-      // Verificar se a reserva se sobrepõe com o mês atual
       return resEnd >= start && resStart <= end;
     });
   }, [reservations, currentDate]);
 
-  // Obter reservas para um dia específico
   const getReservationsForDay = (day: Date) => {
     const dayStart = startOfDay(day);
-    return monthReservations.filter(reservation => {
+    return monthReservations.filter((reservation) => {
       const start = parseAngolaDate(reservation.start_date);
       const end = parseAngolaDate(reservation.end_date);
       return dayStart >= start && dayStart <= end;
     });
   };
 
-  // Obter todos os dias do mês
-  const monthDays = eachDayOfInterval({
-    start: startOfMonth(currentDate),
-    end: endOfMonth(currentDate),
-  });
-
-  // Obter o dia da semana do primeiro dia do mês (0 = Domingo, 1 = Segunda, etc.)
+  const monthDays = eachDayOfInterval({ start: startOfMonth(currentDate), end: endOfMonth(currentDate) });
   const firstDayOfWeek = getDay(startOfMonth(currentDate));
-  
-  // Criar array com células vazias antes do primeiro dia para alinhar o calendário
   const emptyCells = Array(firstDayOfWeek).fill(null);
   const days = [...emptyCells, ...monthDays];
 
-  // Obter reservas próximas (começam 3 dias antes até 3 dias depois)
   const upcomingReservations = useMemo(() => {
     const today = getAngolaDate();
     const threeDaysBefore = new Date(today);
     threeDaysBefore.setDate(today.getDate() - 3);
     const threeDaysLater = new Date(today);
     threeDaysLater.setDate(today.getDate() + 3);
-
-    return reservations.filter(reservation => {
-      if (reservation.status === "cancelled" || reservation.status === "completed") return false;
-      
-      const startDate = parseAngolaDate(reservation.start_date);
-      const endDate = parseAngolaDate(reservation.end_date);
-      
-      // Reservas que começam entre 3 dias antes e 3 dias depois
-      return (startDate >= threeDaysBefore && startDate <= threeDaysLater) || 
-             (endDate >= threeDaysBefore && endDate <= threeDaysLater);
-    }).sort((a, b) => {
-      const dateA = parseAngolaDate(a.start_date);
-      const dateB = parseAngolaDate(b.start_date);
-      return dateA.getTime() - dateB.getTime();
-    });
+    return reservations
+      .filter((reservation) => {
+        if (reservation.status === "cancelled" || reservation.status === "completed") return false;
+        const startDate = parseAngolaDate(reservation.start_date);
+        const endDate = parseAngolaDate(reservation.end_date);
+        return (startDate >= threeDaysBefore && startDate <= threeDaysLater) || (endDate >= threeDaysBefore && endDate <= threeDaysLater);
+      })
+      .sort((a, b) => parseAngolaDate(a.start_date).getTime() - parseAngolaDate(b.start_date).getTime());
   }, [reservations]);
 
-  // Obter carros prestes a retornar (têm checkout mas não checkin, e data de retorno está próxima)
-  const [upcomingReturns, setUpcomingReturns] = useState<Array<{
-    reservation: Reservation;
-    endDate: Date;
-    daysUntil: number;
-  }>>([]);
-
-
-  // Notificações push
-  useEffect(() => {
-    // Solicitar permissão para notificações
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
-
-    // Verificar reservas próximas e enviar notificações
-    if (upcomingReservations.length > 0 && Notification.permission === "granted") {
-      upcomingReservations.forEach(reservation => {
-        const startDate = parseAngolaDate(reservation.start_date);
-        const today = getAngolaDate();
-        const daysUntil = differenceInDays(startDate, today);
-        
-        // Notificar apenas se for hoje ou amanhã
-        if (daysUntil <= 1) {
-          const carName = reservation.cars 
-            ? `${reservation.cars.brand} ${reservation.cars.model}` 
-            : "Carro";
-          const customerName = reservation.customers?.name || "Cliente";
-          
-          new Notification("Reserva Próxima", {
-            body: `${carName} - ${customerName} - ${formatAngolaDate(reservation.start_date)}`,
-            icon: "/favicon.ico",
-            tag: reservation.id, // Evita notificações duplicadas
-          });
-        }
-      });
-    }
-  }, [upcomingReservations]);
-
   const statCards = [
-    {
-      title: "Reservas Ativas",
-      value: stats.activeReservations,
-      icon: Calendar,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50 dark:bg-blue-950",
-    },
-    {
-      title: "Carros Disponíveis",
-      value: `${stats.availableCars}/${stats.totalCars}`,
-      icon: Car,
-      color: "text-green-600",
-      bgColor: "bg-green-50 dark:bg-green-950",
-      subtitle: `${stats.carsOut} fora`,
-    },
-    {
-      title: "Clientes Ativos",
-      value: stats.totalCustomers,
-      icon: Users,
-      color: "text-purple-600",
-      bgColor: "bg-purple-50 dark:bg-purple-950",
-    },
-    {
-      title: "Receita Total",
-      value: `${stats.totalRevenue.toLocaleString("pt-AO", { style: "currency", currency: "AOA", minimumFractionDigits: 0 })}`,
-      icon: DollarSign,
-      color: "text-green-600",
-      bgColor: "bg-green-50 dark:bg-green-950",
-    },
-    {
-      title: "Reservas Concluídas",
-      value: stats.completedReservations,
-      icon: CheckCircle,
-      color: "text-emerald-600",
-      bgColor: "bg-emerald-50 dark:bg-emerald-950",
-    },
-    {
-      title: "Reservas Canceladas",
-      value: stats.cancelledReservations,
-      icon: XCircle,
-      color: "text-red-600",
-      bgColor: "bg-red-50 dark:bg-red-950",
-    },
+    { title: "Reservas Ativas", value: stats.activeReservations, icon: Calendar, color: "text-blue-600", bgColor: "bg-blue-50 dark:bg-blue-950" },
+    { title: "Carros Disponíveis", value: `${stats.availableCars}/${stats.totalCars}`, icon: Car, color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950", subtitle: `${stats.carsOut} fora` },
+    { title: "Clientes Ativos", value: stats.totalCustomers, icon: Users, color: "text-purple-600", bgColor: "bg-purple-50 dark:bg-purple-950" },
+    { title: "Receita Total", value: `${stats.totalRevenue.toLocaleString("pt-AO", { style: "currency", currency: "AOA", minimumFractionDigits: 0 })}`, icon: DollarSign, color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950" },
+    { title: "Reservas Concluídas", value: stats.completedReservations, icon: CheckCircle, color: "text-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-950" },
+    { title: "Reservas Canceladas", value: stats.cancelledReservations, icon: XCircle, color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-950" },
   ];
 
   return (
@@ -508,6 +331,41 @@ const Dashboard = () => {
           <h1 className="text-2xl sm:text-3xl font-bold mb-2">Dashboard</h1>
           <p className="text-sm sm:text-base text-muted-foreground">Visão geral do sistema de reservas</p>
         </div>
+
+        {/* Aviso não-bloqueante para 429 — nunca faz logout */}
+        {isRateLimited && (
+          <Alert variant="default" className="mb-6 border-amber-300 bg-amber-50 dark:bg-amber-950">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-800 dark:text-amber-200">Sincronização em curso</AlertTitle>
+            <AlertDescription className="text-amber-700 dark:text-amber-300 flex items-center justify-between gap-4">
+              <span>Muitas requisições simultâneas. Os dados serão atualizados automaticamente em alguns segundos.</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  statsQuery.refetch();
+                  reservationsQuery.refetch();
+                  upcomingReturnsQuery.refetch();
+                }}
+              >
+                Tentar novamente
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {statsQuery.isError && !isRateLimited && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Erro ao carregar estatísticas</AlertTitle>
+            <AlertDescription className="flex items-center justify-between gap-4">
+              <span>{(statsQuery.error as any)?.message || "Tente novamente."}</span>
+              <Button variant="outline" size="sm" onClick={() => statsQuery.refetch()}>
+                Tentar novamente
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {loading ? (
           <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -523,23 +381,18 @@ const Dashboard = () => {
             {statCards.map((stat) => (
               <Card key={stat.title} className={`${stat.bgColor} border-2`}>
                 <CardHeader className="flex flex-row items-center justify-between pb-1 p-3">
-                  <CardTitle className="text-xs font-medium text-muted-foreground truncate">
-                    {stat.title}
-                  </CardTitle>
+                  <CardTitle className="text-xs font-medium text-muted-foreground truncate">{stat.title}</CardTitle>
                   <stat.icon className={`h-4 w-4 ${stat.color} flex-shrink-0`} />
                 </CardHeader>
                 <CardContent className="p-3 pt-0">
                   <div className="text-xl sm:text-2xl font-bold">{stat.value}</div>
-                  {stat.subtitle && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{stat.subtitle}</p>
-                  )}
+                  {stat.subtitle && <p className="text-[10px] text-muted-foreground mt-0.5">{stat.subtitle}</p>}
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
 
-        {/* Alertas de Reservas Próximas e Retornos */}
         {(upcomingReservations.length > 0 || upcomingReturns.length > 0) && (
           <div className="mt-8">
             <Card>
@@ -551,7 +404,6 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {/* Alertas de Reservas Próximas */}
                   {upcomingReservations.length > 0 && (
                     <div>
                       <h3 className="font-semibold mb-2 text-xs text-muted-foreground">RESERVAS PRÓXIMAS</h3>
@@ -560,145 +412,92 @@ const Dashboard = () => {
                           const startDate = parseAngolaDate(reservation.start_date);
                           const endDate = parseAngolaDate(reservation.end_date);
                           const today = getAngolaDate();
-                    const daysUntil = differenceInDays(startDate, today);
-                    const isStartingToday = isSameAngolaDay(startDate, today);
-                    const daysUntilEnd = differenceInDays(endDate, today);
-                    const isEndingSoon = daysUntilEnd <= 1 && daysUntilEnd >= 0;
-                    
-                    const isExpanded = expandedAlerts.has(reservation.id);
-                    
-                    return (
-                      <Collapsible key={reservation.id} open={isExpanded} onOpenChange={(open) => {
-                        const newSet = new Set(expandedAlerts);
-                        if (open) {
-                          newSet.add(reservation.id);
-                        } else {
-                          newSet.delete(reservation.id);
-                        }
-                        setExpandedAlerts(newSet);
-                      }}>
-                        <Alert 
-                          variant={isStartingToday ? "destructive" : "default"}
-                          className="cursor-pointer"
-                        >
-                          <CollapsibleTrigger asChild>
-                            <div className="flex items-center justify-between w-full">
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                                <AlertTitle className="text-sm truncate">
-                                  {isStartingToday 
-                                    ? "Reserva começa HOJE" 
-                                    : isEndingSoon 
-                                    ? "Reserva termina em breve"
-                                    : `Reserva em ${daysUntil} ${daysUntil === 1 ? "dia" : "dias"}`}
-                                </AlertTitle>
-                                <span className="text-xs text-muted-foreground truncate ml-2">
-                                  - {reservation.cars 
-                                    ? `${reservation.cars.brand} ${reservation.cars.model}` 
-                                    : "Carro N/A"}
-                                </span>
-                              </div>
-                              {isExpanded ? (
-                                <ChevronUp className="h-4 w-4 flex-shrink-0 ml-2" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4 flex-shrink-0 ml-2" />
-                              )}
-                            </div>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent>
-                            <AlertDescription className="mt-2 pt-2 border-t">
-                              <div className="flex flex-col gap-1 text-sm">
-                                <span className="font-medium">
-                                  {reservation.cars 
-                                    ? `${reservation.cars.brand} ${reservation.cars.model}` 
-                                    : "Carro N/A"}
-                                </span>
-                                <span>
-                                  Cliente: {reservation.customers?.name || "N/A"}
-                                </span>
-                                <span>
-                                  Período: {formatAngolaDate(reservation.start_date)} - {formatAngolaDate(reservation.end_date)}
-                                </span>
-                                <span className="font-semibold">
-                                  Total: {reservation.total_amount.toFixed(2)} AKZ
-                                </span>
-                              </div>
-                            </AlertDescription>
-                          </CollapsibleContent>
-                        </Alert>
-                      </Collapsible>
-                    );
-                  })}
-                    </div>
-                  </div>
-                  )}
-
-                  {/* Alertas de Carros Prestes a Retornar */}
-                  {upcomingReturns.length > 0 && (
-                    <div>
-                      <h3 className="font-semibold mb-2 text-xs text-muted-foreground">CARROS PRESTES A RETORNAR</h3>
-                      <div className="space-y-2">
-                        {upcomingReturns.map(({ reservation, endDate, daysUntil }) => {
-                          const isReturningToday = daysUntil === 0;
-                          const isReturningTomorrow = daysUntil === 1;
-                          
-                          const isExpanded = expandedAlerts.has(`return-${reservation.id}`);
-                          
+                          const daysUntil = differenceInDays(startDate, today);
+                          const isStartingToday = isSameAngolaDay(startDate, today);
+                          const daysUntilEnd = differenceInDays(endDate, today);
+                          const isEndingSoon = daysUntilEnd <= 1 && daysUntilEnd >= 0;
+                          const isExpanded = expandedAlerts.has(reservation.id);
                           return (
-                            <Collapsible key={reservation.id} open={isExpanded} onOpenChange={(open) => {
-                              const newSet = new Set(expandedAlerts);
-                              if (open) {
-                                newSet.add(`return-${reservation.id}`);
-                              } else {
-                                newSet.delete(`return-${reservation.id}`);
-                              }
-                              setExpandedAlerts(newSet);
-                            }}>
-                              <Alert 
-                                variant={isReturningToday ? "destructive" : "default"}
-                                className="cursor-pointer"
-                              >
+                            <Collapsible
+                              key={reservation.id}
+                              open={isExpanded}
+                              onOpenChange={(open) => {
+                                const newSet = new Set(expandedAlerts);
+                                if (open) newSet.add(reservation.id);
+                                else newSet.delete(reservation.id);
+                                setExpandedAlerts(newSet);
+                              }}
+                            >
+                              <Alert variant={isStartingToday ? "destructive" : "default"} className="cursor-pointer">
                                 <CollapsibleTrigger asChild>
                                   <div className="flex items-center justify-between w-full">
                                     <div className="flex items-center gap-2 flex-1 min-w-0">
                                       <AlertCircle className="h-4 w-4 flex-shrink-0" />
                                       <AlertTitle className="text-sm truncate">
-                                        {isReturningToday 
-                                          ? "Carro retorna HOJE" 
-                                          : isReturningTomorrow
-                                          ? "Carro retorna AMANHÃ"
-                                          : `Carro retorna em ${daysUntil} ${daysUntil === 1 ? "dia" : "dias"}`}
+                                        {isStartingToday ? "Reserva começa HOJE" : isEndingSoon ? "Reserva termina em breve" : `Reserva em ${daysUntil} ${daysUntil === 1 ? "dia" : "dias"}`}
                                       </AlertTitle>
-                                      <span className="text-xs text-muted-foreground truncate ml-2">
-                                        - {reservation.cars 
-                                          ? `${reservation.cars.brand} ${reservation.cars.model}` 
-                                          : "Carro N/A"}
-                                      </span>
+                                      <span className="text-xs text-muted-foreground truncate ml-2">- {reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Carro N/A"}</span>
                                     </div>
-                                    {isExpanded ? (
-                                      <ChevronUp className="h-4 w-4 flex-shrink-0 ml-2" />
-                                    ) : (
-                                      <ChevronDown className="h-4 w-4 flex-shrink-0 ml-2" />
-                                    )}
+                                    {isExpanded ? <ChevronUp className="h-4 w-4 flex-shrink-0 ml-2" /> : <ChevronDown className="h-4 w-4 flex-shrink-0 ml-2" />}
                                   </div>
                                 </CollapsibleTrigger>
                                 <CollapsibleContent>
                                   <AlertDescription className="mt-2 pt-2 border-t">
                                     <div className="flex flex-col gap-1 text-sm">
-                                      <span className="font-medium">
-                                        {reservation.cars 
-                                          ? `${reservation.cars.brand} ${reservation.cars.model}` 
-                                          : "Carro N/A"}
-                                      </span>
-                                      <span>
-                                        Cliente: {reservation.customers?.name || "N/A"}
-                                      </span>
-                                      <span>
-                                        Data de retorno: {formatAngolaDate(reservation.end_date)}
-                                      </span>
-                                      <span className="text-xs text-muted-foreground">
-                                        Carro está fora desde o checkout
-                                      </span>
+                                      <span className="font-medium">{reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Carro N/A"}</span>
+                                      <span>Cliente: {reservation.customers?.name || "N/A"}</span>
+                                      <span>Período: {formatAngolaDate(reservation.start_date)} - {formatAngolaDate(reservation.end_date)}</span>
+                                      <span className="font-semibold">Total: {reservation.total_amount.toFixed(2)} AKZ</span>
+                                    </div>
+                                  </AlertDescription>
+                                </CollapsibleContent>
+                              </Alert>
+                            </Collapsible>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {upcomingReturns.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold mb-2 text-xs text-muted-foreground">CARROS PRESTES A RETORNAR</h3>
+                      <div className="space-y-2">
+                        {upcomingReturns.map(({ reservation, daysUntil }) => {
+                          const isReturningToday = daysUntil === 0;
+                          const isReturningTomorrow = daysUntil === 1;
+                          const isExpanded = expandedAlerts.has(`return-${reservation.id}`);
+                          return (
+                            <Collapsible
+                              key={reservation.id}
+                              open={isExpanded}
+                              onOpenChange={(open) => {
+                                const newSet = new Set(expandedAlerts);
+                                if (open) newSet.add(`return-${reservation.id}`);
+                                else newSet.delete(`return-${reservation.id}`);
+                                setExpandedAlerts(newSet);
+                              }}
+                            >
+                              <Alert variant={isReturningToday ? "destructive" : "default"} className="cursor-pointer">
+                                <CollapsibleTrigger asChild>
+                                  <div className="flex items-center justify-between w-full">
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                      <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                                      <AlertTitle className="text-sm truncate">
+                                        {isReturningToday ? "Carro retorna HOJE" : isReturningTomorrow ? "Carro retorna AMANHÃ" : `Carro retorna em ${daysUntil} ${daysUntil === 1 ? "dia" : "dias"}`}
+                                      </AlertTitle>
+                                      <span className="text-xs text-muted-foreground truncate ml-2">- {reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Carro N/A"}</span>
+                                    </div>
+                                    {isExpanded ? <ChevronUp className="h-4 w-4 flex-shrink-0 ml-2" /> : <ChevronDown className="h-4 w-4 flex-shrink-0 ml-2" />}
+                                  </div>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent>
+                                  <AlertDescription className="mt-2 pt-2 border-t">
+                                    <div className="flex flex-col gap-1 text-sm">
+                                      <span className="font-medium">{reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Carro N/A"}</span>
+                                      <span>Cliente: {reservation.customers?.name || "N/A"}</span>
+                                      <span>Data de retorno: {formatAngolaDate(reservation.end_date)}</span>
+                                      <span className="text-xs text-muted-foreground">Carro está fora desde o checkout</span>
                                     </div>
                                   </AlertDescription>
                                 </CollapsibleContent>
@@ -715,28 +514,17 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Calendário de Reservas */}
         <div className="mt-8">
           <Card>
             <CardHeader>
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
                 <CardTitle className="text-xl sm:text-2xl">Calendário de Reservas</CardTitle>
                 <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={() => setCurrentDate(addMonths(currentDate, -1))}
-                  >
+                  <Button variant="outline" size="icon" onClick={() => setCurrentDate(addMonths(currentDate, -1))}>
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <span className="text-base sm:text-lg font-semibold min-w-[150px] sm:min-w-[200px] text-center">
-                    {format(currentDate, "MMMM yyyy", { locale: ptBR })}
-                  </span>
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-                  >
+                  <span className="text-base sm:text-lg font-semibold min-w-[150px] sm:min-w-[200px] text-center">{format(currentDate, "MMMM yyyy", { locale: ptBR })}</span>
+                  <Button variant="outline" size="icon" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
@@ -745,9 +533,15 @@ const Dashboard = () => {
             <CardContent>
               {reservationsLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Carregando calendário...</div>
+              ) : reservationsQuery.isError && !isRateLimitError(reservationsQuery.error) ? (
+                <div className="text-center py-8">
+                  <p className="text-sm text-destructive mb-3">Erro ao carregar reservas.</p>
+                  <Button variant="outline" size="sm" onClick={() => reservationsQuery.refetch()}>
+                    Tentar novamente
+                  </Button>
+                </div>
               ) : (
                 <div className="space-y-6">
-                  {/* Legenda */}
                   {carColorMap.size > 0 && (
                     <div className="border rounded-lg p-3">
                       <h3 className="font-semibold mb-2 text-sm">Legenda de Cores</h3>
@@ -762,10 +556,8 @@ const Dashboard = () => {
                     </div>
                   )}
 
-                  {/* Calendário */}
                   <div className="overflow-x-auto -mx-4 sm:mx-0">
                     <div className="min-w-[100%] px-4 sm:px-0">
-                      {/* Cabeçalho dos dias da semana */}
                       <div className="grid grid-cols-7 gap-0.5 mb-1">
                         {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
                           <div key={day} className="text-center text-[10px] font-semibold py-1">
@@ -773,94 +565,45 @@ const Dashboard = () => {
                           </div>
                         ))}
                       </div>
-
-                      {/* Grid do calendário */}
                       <div className="grid grid-cols-7 gap-0.5">
                         {days.map((day, dayIndex) => {
-                          // Se for uma célula vazia (antes do primeiro dia do mês)
                           if (day === null) {
-                            return (
-                              <div
-                                key={`empty-${dayIndex}`}
-                                className="min-h-[50px] border rounded p-0.5 bg-muted/30"
-                              />
-                            );
+                            return <div key={`empty-${dayIndex}`} className="min-h-[50px] border rounded p-0.5 bg-muted/30" />;
                           }
-
                           const dayReservations = getReservationsForDay(day);
                           const isFirstDay = dayIndex % 7 === 0;
                           const isLastDay = dayIndex % 7 === 6;
                           const isToday = isSameAngolaDay(day, getAngolaDate());
-                          
                           return (
-                            <div
-                              key={day.toISOString()}
-                              className={`min-h-[50px] border rounded p-0.5 ${
-                                isToday ? "bg-accent/50" : "bg-card"
-                              }`}
-                            >
-                              <div className="text-[10px] font-medium mb-0.5">
-                                {format(day, "d")}
-                              </div>
+                            <div key={day.toISOString()} className={`min-h-[50px] border rounded p-0.5 ${isToday ? "bg-accent/50" : "bg-card"}`}>
+                              <div className="text-[10px] font-medium mb-0.5">{format(day, "d")}</div>
                               <div className="space-y-0.5">
                                 {dayReservations.map((reservation) => {
                                   const carColor = carColorMap.get(reservation.car_id);
                                   if (!carColor) return null;
-
                                   const isStart = isSameAngolaDay(day, reservation.start_date);
                                   const isEnd = isSameAngolaDay(day, reservation.end_date);
                                   const isMiddle = !isStart && !isEnd;
-
                                   return (
                                     <Popover key={reservation.id}>
                                       <PopoverTrigger asChild>
                                         <div
-                                          className={`text-[9px] p-0.5 cursor-pointer hover:opacity-80 border ${
-                                            carColor.light
-                                          } ${carColor.border} ${
-                                            isStart ? "rounded-l" : ""
-                                          } ${isEnd ? "rounded-r" : ""} ${
-                                            isMiddle ? "rounded-none" : ""
-                                          }`}
-                                          style={{
-                                            borderLeftWidth: isStart || isFirstDay ? "1px" : "0",
-                                            borderRightWidth: isEnd || isLastDay ? "1px" : "0",
-                                            borderTopWidth: "1px",
-                                            borderBottomWidth: "1px",
-                                          }}
+                                          className={`text-[9px] p-0.5 cursor-pointer hover:opacity-80 border ${carColor.light} ${carColor.border} ${isStart ? "rounded-l" : ""} ${isEnd ? "rounded-r" : ""} ${isMiddle ? "rounded-none" : ""}`}
+                                          style={{ borderLeftWidth: isStart || isFirstDay ? "1px" : "0", borderRightWidth: isEnd || isLastDay ? "1px" : "0", borderTopWidth: "1px", borderBottomWidth: "1px" }}
                                         >
-                                          <div className="font-medium truncate leading-tight">
-                                            {reservation.cars
-                                              ? `${reservation.cars.brand} ${reservation.cars.model}`
-                                              : "N/A"}
-                                          </div>
-                                          <div className="text-[7px] text-muted-foreground truncate leading-tight">
-                                            {reservation.customers?.name || "N/A"}
-                                          </div>
+                                          <div className="font-medium truncate leading-tight">{reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "N/A"}</div>
+                                          <div className="text-[7px] text-muted-foreground truncate leading-tight">{reservation.customers?.name || "N/A"}</div>
                                         </div>
                                       </PopoverTrigger>
                                       <PopoverContent className="w-80">
                                         <div className="space-y-2">
-                                          <h4 className="font-semibold text-sm">
-                                            {format(day, "EEEE, d 'de' MMMM", { locale: ptBR })}
-                                          </h4>
+                                          <h4 className="font-semibold text-sm">{format(day, "EEEE, d 'de' MMMM", { locale: ptBR })}</h4>
                                           <div className="space-y-2">
                                             <div className="p-2 border rounded text-sm">
-                                              <div className="font-medium">
-                                                {reservation.cars
-                                                  ? `${reservation.cars.brand} ${reservation.cars.model}`
-                                                  : "N/A"}
-                                              </div>
-                                              <div className="text-xs text-muted-foreground">
-                                                Cliente: {reservation.customers?.name || "N/A"}
-                                              </div>
-                                              <div className="text-xs text-muted-foreground">
-                                                Período: {formatAngolaDate(reservation.start_date)} -{" "}
-                                                {formatAngolaDate(reservation.end_date)}
-                                              </div>
-                                              <div className="text-xs text-muted-foreground">
-                                                Total: {reservation.total_amount.toFixed(2)} AKZ
-                                              </div>
+                                              <div className="font-medium">{reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "N/A"}</div>
+                                              <div className="text-xs text-muted-foreground">Cliente: {reservation.customers?.name || "N/A"}</div>
+                                              <div className="text-xs text-muted-foreground">Período: {formatAngolaDate(reservation.start_date)} - {formatAngolaDate(reservation.end_date)}</div>
+                                              <div className="text-xs text-muted-foreground">Total: {reservation.total_amount.toFixed(2)} AKZ</div>
                                             </div>
                                           </div>
                                         </div>

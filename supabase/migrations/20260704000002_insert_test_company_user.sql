@@ -1,8 +1,12 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA extensions;
+
 -- Migration: Insert Test Company User
 -- This creates a test company user for testing the login functionality
 
 -- Obter a primeira empresa existente
 DO $$
+-- ensure extensions available
+
 DECLARE
   test_company_id UUID;
   test_subdomain TEXT;
@@ -28,7 +32,7 @@ BEGIN
   ) VALUES (
     test_company_id,
     'teste',
-    crypt('123456', gen_salt('bf')), -- Hash usando bcrypt via pgcrypto
+    extensions.crypt('123456', extensions.gen_salt('bf')), -- Hash usando bcrypt via pgcrypto
     'gerente',
     true
   );

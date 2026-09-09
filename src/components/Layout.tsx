@@ -1,6 +1,7 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useState, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { isRateLimitError, isAuthError } from "@/lib/supabaseSafe";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Car, Calendar, Users, LayoutDashboard, LogOut, UserCircle, Settings, Truck, FileText, ChevronLeft, ChevronRight, Menu, Package, Warehouse, ShoppingCart, ArrowDownCircle, ArrowUpCircle, ClipboardCheck, Wrench, ChevronDown, ChevronUp } from "lucide-react";
@@ -33,34 +34,43 @@ const Layout = ({ children }: LayoutProps) => {
   const logoUrl = company?.logo_url || "/logo.png";
   const appName = company?.name || "MoFleet";
 
+  // Auth subscription — subscreve UMA vez (fix: antes resubscrevia a cada location.pathname)
+  const hasCheckedAuth = useRef(false);
   useEffect(() => {
     let cancelled = false;
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (cancelled) return;
+      hasCheckedAuth.current = true;
       setUser(session?.user ?? null);
       const publicPaths = ["/", "/auth", "/terms", "/privacy"];
       const onPublicPath = publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"));
-      if (!session && !onPublicPath) {
-        navigate("/auth");
-      }
+      if (!session && !onPublicPath) navigate("/auth");
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (cancelled) return;
+      hasCheckedAuth.current = true;
       setUser(session?.user ?? null);
       const publicPaths = ["/", "/auth", "/terms", "/privacy"];
       const onPublicPath = publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"));
-      if (!session && !onPublicPath) {
-        navigate("/auth");
-      }
+      if (!session && !onPublicPath) navigate("/auth");
     });
 
     return () => {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, [navigate, location.pathname]);
+  }, [navigate]); // sem location.pathname — evita recriar subscription a cada navegação
+
+  // Redirect se user ficar null após já ter verificado auth e estiver em rota privada
+  useEffect(() => {
+    if (!hasCheckedAuth.current) return;
+    if (user !== null) return;
+    const publicPaths = ["/", "/auth", "/terms", "/privacy"];
+    const onPublicPath = publicPaths.some(path => location.pathname === path || location.pathname.startsWith(path + "/"));
+    if (!onPublicPath) navigate("/auth");
+  }, [user, location.pathname, navigate]);
 
   useEffect(() => {
     if (!user) {
@@ -87,107 +97,103 @@ const Layout = ({ children }: LayoutProps) => {
     let cancelled = false;
 
     const checkSuperAdmin = async () => {
-      if (user?.id) {
-        // Verificar sessão primeiro
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          console.error('Layout: Erro ao verificar sessão:', sessionError);
-          if (!cancelled) {
-            setIsSuperAdmin(false);
-            setUserRole(null);
-          }
-          return;
-        }
-        
-        if (!session) {
-          console.warn('Layout: Nenhuma sessão encontrada para o usuário:', user.id);
-          if (!cancelled) {
-            setIsSuperAdmin(false);
-            setUserRole(null);
-          }
-          return;
-        }
-        
-        // Buscar role e is_active
-        const { data: profile, error } = await supabase
-          .from("user_profiles")
-          .select("role, is_active")
-          .eq("user_id", user.id)
-          .maybeSingle();
-        
-        if (error) {
-          console.error('Layout: Erro ao buscar perfil:', error);
-          // Se for erro 401 ou erro relacionado a autenticação, tentar refresh do token
-          if (error.code === 'PGRST301' || error.status === 401 || error.code === '22023') {
-            console.log('Layout: Erro de autenticação detectado, tentando refresh...');
-            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-            if (refreshError) {
-              console.error('Layout: Erro ao fazer refresh do token:', refreshError);
-              // Se o refresh falhar, redirecionar para login
-              if (!cancelled) {
-                await supabase.auth.signOut();
-                navigate("/auth");
-              }
-            } else if (refreshData.session) {
-              // Se o refresh funcionou, tentar buscar o perfil novamente
-              console.log('Layout: Token atualizado, tentando buscar perfil novamente...');
-              const { data: retryProfile, error: retryError } = await supabase
-                .from("user_profiles")
-                .select("role, is_active")
-                .eq("user_id", user.id)
-                .maybeSingle();
-              
-              if (!retryError && retryProfile && !cancelled) {
-                const isActive = retryProfile?.is_active === true || retryProfile?.is_active === null;
-                setIsSuperAdmin(retryProfile?.role === 'super_admin' && isActive);
-                setUserRole(isActive ? (retryProfile?.role || null) : null);
-                console.log('Layout: Perfil encontrado após refresh:', { 
-                  role: retryProfile?.role, 
-                  is_active: retryProfile?.is_active 
-                });
-                return;
-              }
-              // Se a segunda tentativa falhou, deslogar e redirecionar
-              if (retryError && !cancelled) {
-                await supabase.auth.signOut();
-                navigate("/auth");
-                return;
-              }
-            }
-          }
-          if (!cancelled) {
-            setIsSuperAdmin(false);
-            setUserRole(null);
-          }
-          return;
-        }
-        
-        if (!cancelled) {
-          console.log('Layout: Perfil encontrado:', { 
-            role: profile?.role, 
-            is_active: profile?.is_active,
-            user_id: user.id 
-          });
-          
-          // Só definir role se is_active for true (ou null para compatibilidade)
-          const isActive = profile?.is_active === true || profile?.is_active === null;
-          setIsSuperAdmin(profile?.role === 'super_admin' && isActive);
-          setUserRole(isActive ? (profile?.role || null) : null);
-        }
-      } else {
+      if (!user?.id) {
         if (!cancelled) {
           setIsSuperAdmin(false);
           setUserRole(null);
         }
+        return;
+      }
+
+      // Usa a sessão já em memória (evita getSession extra que conta para rate limit)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('Layout: Nenhuma sessão encontrada para o usuário:', user.id);
+        if (!cancelled) {
+          setIsSuperAdmin(false);
+          setUserRole(null);
+        }
+        return;
+      }
+
+      const { data: profile, error } = await supabase
+        .from("user_profiles")
+        .select("role, is_active")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error) {
+        // FASE 0: 429 NUNCA faz logout — é transitório, apenas avisa e sai
+        if (isRateLimitError(error)) {
+          console.warn('Layout: Rate limit ao buscar perfil (429) — não faz logout, tenta novamente mais tarde', error);
+          if (!cancelled) {
+            // Mantém role anterior em vez de limpar, para não piscar UI
+          }
+          return;
+        }
+
+        console.error('Layout: Erro ao buscar perfil:', error);
+        // Só tenta refresh se for erro de auth real
+        if (isAuthError(error)) {
+          console.log('Layout: Erro de autenticação detectado, tentando refresh...');
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError) {
+            // Se for rate limit no refresh, também não faz logout
+            if (isRateLimitError(refreshError)) {
+              console.warn('Layout: Rate limit no refreshSession — não faz logout', refreshError);
+              return;
+            }
+            console.error('Layout: Erro ao fazer refresh do token:', refreshError);
+            if (!cancelled && isAuthError(refreshError)) {
+              await supabase.auth.signOut();
+              navigate("/auth");
+            }
+            return;
+          }
+          if (refreshData.session) {
+            console.log('Layout: Token atualizado, tentando buscar perfil novamente...');
+            const { data: retryProfile, error: retryError } = await supabase
+              .from("user_profiles")
+              .select("role, is_active")
+              .eq("user_id", user.id)
+              .maybeSingle();
+
+            if (!retryError && retryProfile && !cancelled) {
+              const isActive = retryProfile?.is_active === true || retryProfile?.is_active === null;
+              setIsSuperAdmin(retryProfile?.role === 'super_admin' && isActive);
+              setUserRole(isActive ? (retryProfile?.role || null) : null);
+              return;
+            }
+            if (retryError && !cancelled) {
+              if (isRateLimitError(retryError)) {
+                console.warn('Layout: Rate limit no retry de perfil — não faz logout', retryError);
+                return;
+              }
+              if (isAuthError(retryError)) {
+                await supabase.auth.signOut();
+                navigate("/auth");
+              }
+              return;
+            }
+          }
+        }
+        if (!cancelled) {
+          setIsSuperAdmin(false);
+          setUserRole(null);
+        }
+        return;
+      }
+
+      if (!cancelled) {
+        const isActive = profile?.is_active === true || profile?.is_active === null;
+        setIsSuperAdmin(profile?.role === 'super_admin' && isActive);
+        setUserRole(isActive ? (profile?.role || null) : null);
       }
     };
 
     checkSuperAdmin();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id, navigate]); // Adicionar navigate como dependência
+    return () => { cancelled = true; };
+  }, [user?.id, navigate]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

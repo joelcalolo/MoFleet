@@ -31,7 +31,22 @@ import StockExits from "./pages/StockExits";
 import StockAdjustments from "./pages/StockAdjustments";
 import StockMovements from "./pages/StockMovements";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60 * 1000, // 60s - evita refetch ao voltar ao Dashboard
+      gcTime: 5 * 60 * 1000, // 5min em cache
+      retry: (failureCount, error: any) => {
+        // Nunca retry em 429 de forma agressiva - deixa o supabaseSafe fazer backoff
+        const status = error?.status ?? error?.statusCode;
+        if (status === 429 || error?.code === "over_request_rate_limit") return failureCount < 1;
+        return failureCount < 2;
+      },
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
