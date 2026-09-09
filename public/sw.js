@@ -1,5 +1,5 @@
 // Service Worker para PWA
-const CACHE_NAME = 'rentacar-v1';
+const CACHE_NAME = 'rentacar-v2'; // bump para invalidar cache antigo que pode ter Dashboard sem throttle (fix logout Sr. Luís)
 const urlsToCache = [
   '/',
   '/dashboard',
