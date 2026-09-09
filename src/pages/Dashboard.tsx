@@ -50,7 +50,7 @@ async function fetchStatsData(): Promise<Stats> {
     withSupabaseLimit(() => supabase.from("checkouts").select("id, reservation_id")),
   ])) as any[];
 
-  // Se todos rate limited, propaga para UI
+  // Propaga rate limit para UI dedicada (amarela) e outros erros para UI vermelha
   const anyRateLimited = [reservationsRes, carsRes, customersRes, checkoutsRes].some((r) => r?.error && isRateLimitError(r.error));
   if (anyRateLimited) {
     const err: any = new Error("Rate limited ao carregar stats");
@@ -58,6 +58,8 @@ async function fetchStatsData(): Promise<Stats> {
     err.code = "over_request_rate_limit";
     throw err;
   }
+  const firstError = [reservationsRes, carsRes, customersRes, checkoutsRes].find((r) => r?.error)?.error;
+  if (firstError) throw firstError;
 
   const allReservations = reservationsRes.data || [];
   const activeReservations = allReservations.filter((r: any) => ["confirmed", "active"].includes(r.status)).length;
@@ -79,11 +81,18 @@ async function fetchStatsData(): Promise<Stats> {
   if (checkouts.length > 0) {
     const reservationIds = Array.from(new Set(checkouts.map((c: any) => c.reservation_id).filter(Boolean)));
     if (reservationIds.length > 0) {
-      const { data: checkinsForCheckouts } = (await withSupabaseLimit(() =>
+      const { data: checkinsForCheckouts, error: checkinsError } = (await withSupabaseLimit(() =>
         supabase.from("checkins").select("reservation_id").in("reservation_id", reservationIds)
       )) as any;
+      if (checkinsError) {
+        if (isRateLimitError(checkinsError)) {
+          console.warn("[Dashboard] checkins (stats) rate limited — calcula carsOut sem filtro");
+        } else {
+          throw checkinsError;
+        }
+      }
       const reservationsWithCheckin = new Set((checkinsForCheckouts || []).map((c: any) => c.reservation_id));
-      carsOut = checkouts.filter((checkout: any) => !reservationsWithCheckin.has(checkout.reservation_id)).length;
+      carsOut = checkinsError ? checkouts.length : checkouts.filter((checkout: any) => !reservationsWithCheckin.has(checkout.reservation_id)).length;
     }
   }
 
@@ -126,10 +135,12 @@ async function fetchReservationsData(): Promise<Reservation[]> {
     supabase.from("checkins").select("reservation_id").in("reservation_id", reservationIds)
   )) as any;
 
-  if (checkinError && isRateLimitError(checkinError)) {
-    // Se checkins falhar por 429, retorna sem filtrar (evita quebrar calendário)
-    console.warn("[Dashboard] checkins rate limited, retorna sem filtro");
-    return reservationsData;
+  if (checkinError) {
+    if (isRateLimitError(checkinError)) {
+      console.warn("[Dashboard] checkins rate limited, retorna sem filtro");
+      return reservationsData;
+    }
+    throw checkinError;
   }
 
   const reservationsWithCheckin = new Set((checkinsForReservations || []).map((c: any) => c.reservation_id));
@@ -175,10 +186,18 @@ async function fetchUpcomingReturnsData(): Promise<Array<{ reservation: Reservat
   const reservationIds = Array.from(new Set(checkoutsData.map((c) => (c.reservations as Reservation)?.id).filter(Boolean)));
   let reservationsWithCheckin = new Set<string>();
   if (reservationIds.length > 0) {
-    const { data: checkinsForReturns } = (await withSupabaseLimit(() =>
+    const { data: checkinsForReturns, error: checkinsReturnsError } = (await withSupabaseLimit(() =>
       supabase.from("checkins").select("reservation_id").in("reservation_id", reservationIds)
     )) as any;
-    reservationsWithCheckin = new Set((checkinsForReturns || []).map((c: any) => c.reservation_id));
+    if (checkinsReturnsError) {
+      if (isRateLimitError(checkinsReturnsError)) {
+        console.warn("[Dashboard] checkins (upcomingReturns) rate limited — retorna sem filtro de checkin");
+      } else {
+        throw checkinsReturnsError;
+      }
+    } else {
+      reservationsWithCheckin = new Set((checkinsForReturns || []).map((c: any) => c.reservation_id));
+    }
   }
 
   for (const checkout of checkoutsData) {
@@ -197,16 +216,12 @@ const Dashboard = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [expandedAlerts, setExpandedAlerts] = useState<Set<string>>(new Set());
 
-  // React Query — Fase 1: cache + dedup + não refetch em window focus
+  // React Query — usa defaults globais de App.tsx (staleTime 60s, retry 429→1x, outros→2x)
   const statsQuery = useQuery({
     queryKey: ["dashboard", "stats"],
     queryFn: fetchStatsData,
     staleTime: 60 * 1000,
     gcTime: 5 * 60 * 1000,
-    retry: (count, error: any) => {
-      if (isRateLimitError(error)) return count < 1;
-      return count < 2;
-    },
   });
 
   const reservationsQuery = useQuery({
@@ -214,10 +229,6 @@ const Dashboard = () => {
     queryFn: fetchReservationsData,
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
-    retry: (count, error: any) => {
-      if (isRateLimitError(error)) return count < 1;
-      return count < 2;
-    },
   });
 
   const upcomingReturnsQuery = useQuery({
@@ -225,10 +236,6 @@ const Dashboard = () => {
     queryFn: fetchUpcomingReturnsData,
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
-    retry: (count, error: any) => {
-      if (isRateLimitError(error)) return count < 1;
-      return count < 2;
-    },
   });
 
   const stats: Stats = statsQuery.data ?? {
