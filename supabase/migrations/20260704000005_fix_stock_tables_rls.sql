@@ -1,3 +1,8 @@
+-- Ensure company_id exists (added in later migration, ensure here)
+ALTER TABLE public.stock_entries ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE SET NULL;
+ALTER TABLE public.stock_exits ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE SET NULL;
+ALTER TABLE public.stock_adjustments ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id) ON DELETE SET NULL;
+
 -- Migration: Fix RLS for stock tables to prevent cross-company access
 -- This ensures that users can only see stock data from their own company
 
