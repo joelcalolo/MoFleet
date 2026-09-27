@@ -16,6 +16,7 @@ interface CustomerFormProps {
 
 export const CustomerForm = ({ customer, onClose }: CustomerFormProps) => {
   const [loading, setLoading] = useState(false);
+  const { companyId } = useCompany();
   const [formData, setFormData] = useState({
     name: customer?.name || "",
     phone: customer?.phone || "",
@@ -30,12 +31,19 @@ export const CustomerForm = ({ customer, onClose }: CustomerFormProps) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!companyId) {
+      toast.error("Erro: Empresa não identificada");
+      return;
+    }
+    
     setLoading(true);
 
     try {
       // Preparar dados para envio, convertendo strings vazias para null
       const dataToSave = {
         ...formData,
+        company_id: companyId,
         email: formData.email || null,
         id_document: formData.id_document || null,
         drivers_license: formData.drivers_license || null,

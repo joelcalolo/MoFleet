@@ -12,6 +12,7 @@ import { Car } from "@/pages/Cars";
 import { Customer } from "@/pages/Customers";
 import { parseAngolaDate, formatAngolaDate, parseDateTimeLocal, formatDateTimeLocal } from "@/lib/dateUtils";
 import { handleError, logError } from "@/lib/errorHandler";
+import { useCompany } from "@/hooks/useCompany";
 
 interface ReservationFormProps {
   reservation: Reservation | null;
@@ -20,6 +21,7 @@ interface ReservationFormProps {
 
 export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) => {
   const [loading, setLoading] = useState(false);
+  const { companyId } = useCompany();
   const [cars, setCars] = useState<Car[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCar, setSelectedCar] = useState<Car | null>(null);
@@ -227,6 +229,12 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!companyId) {
+      toast.error("Erro: Empresa não identificada");
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -258,6 +266,7 @@ export const ReservationForm = ({ reservation, onClose }: ReservationFormProps) 
 
       // Preparar dados para salvar, removendo campos que podem não existir no banco ainda
       const dataToSave: any = {
+        company_id: companyId,
         car_id: formData.car_id,
         customer_id: formData.customer_id,
         start_date: formData.start_date,

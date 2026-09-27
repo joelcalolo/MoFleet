@@ -29,8 +29,12 @@ const Customers = () => {
   const { companyId, loading: companyLoading } = useCompany();
 
   useEffect(() => {
-    if (!companyLoading && companyId) {
-      fetchCustomers();
+    if (!companyLoading) {
+      if (companyId) {
+        fetchCustomers();
+      } else {
+        setLoading(false);
+      }
     }
   }, [companyId, companyLoading]);
 

@@ -18,6 +18,7 @@ interface CarFormProps {
 
 export const CarForm = ({ car, onClose }: CarFormProps) => {
   const [loading, setLoading] = useState(false);
+  const { companyId } = useCompany();
   const [formData, setFormData] = useState({
     brand: car?.brand || "",
     model: car?.model || "",
@@ -42,13 +43,24 @@ export const CarForm = ({ car, onClose }: CarFormProps) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!companyId) {
+      toast.error("Erro: Empresa não identificada");
+      return;
+    }
+    
     setLoading(true);
 
     try {
+      const dataToSave = {
+        ...formData,
+        company_id: companyId
+      };
+
       if (car) {
         const { error } = await supabase
           .from("cars")
-          .update(formData)
+          .update(dataToSave)
           .eq("id", car.id);
 
         if (error) throw error;
@@ -56,7 +68,7 @@ export const CarForm = ({ car, onClose }: CarFormProps) => {
       } else {
         const { data, error } = await supabase
           .from("cars")
-          .insert([formData])
+          .insert([dataToSave])
           .select();
 
         if (error) {
