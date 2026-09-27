@@ -30,24 +30,60 @@ export function useCompany(): CompanyData {
         // Get current user
         const { data: { user } } = await supabase.auth.getUser();
         
-        if (user && detectedSubdomain) {
-          // Get company by subdomain
-          const { data: companyData } = await supabase
-            .rpc('get_company_by_subdomain', { p_subdomain: detectedSubdomain });
-          
-          if (companyData && companyData.length > 0) {
-            setCompanyId(companyData[0].id);
+        if (user) {
+          let foundCompanyId = null;
+
+          if (detectedSubdomain) {
+            // Get company by subdomain
+            const { data: companyData } = await supabase
+              .rpc('get_company_by_subdomain', { p_subdomain: detectedSubdomain });
+            
+            if (companyData && companyData.length > 0) {
+              foundCompanyId = companyData[0].id;
+            }
           }
-        } else if (user) {
-          // Fallback: get user's company from user_profiles
-          const { data: profileData } = await supabase
-            .from('user_profiles')
-            .select('company_id')
-            .eq('user_id', user.id)
-            .single();
-          
-          if (profileData) {
-            setCompanyId(profileData.company_id);
+
+          // Fallback: get user's company from user_profiles if not found by subdomain
+          if (!foundCompanyId) {
+            const { data: profileData } = await supabase
+              .from('user_profiles')
+              .select('company_id')
+              .eq('user_id', user.id)
+              .single();
+            
+            if (profileData) {
+              foundCompanyId = profileData.company_id;
+            }
+          }
+
+          if (foundCompanyId) {
+            setCompanyId(foundCompanyId);
+          } else {
+            // Se ainda não encontrou e houver um companyUser no localStorage (usuário híbrido)
+            const storedCompanyUser = localStorage.getItem('companyUser');
+            if (storedCompanyUser) {
+              try {
+                const companyUser = JSON.parse(storedCompanyUser);
+                if (companyUser && companyUser.company_id) {
+                  setCompanyId(companyUser.company_id);
+                }
+              } catch (e) {
+                console.error("Error parsing companyUser from localStorage", e);
+              }
+            }
+          }
+        } else {
+          // Usuário não autenticado no Supabase Auth, verificar localStorage (híbrido)
+          const storedCompanyUser = localStorage.getItem('companyUser');
+          if (storedCompanyUser) {
+            try {
+              const companyUser = JSON.parse(storedCompanyUser);
+              if (companyUser && companyUser.company_id) {
+                setCompanyId(companyUser.company_id);
+              }
+            } catch (e) {
+              console.error("Error parsing companyUser from localStorage", e);
+            }
           }
         }
       } catch (error) {
