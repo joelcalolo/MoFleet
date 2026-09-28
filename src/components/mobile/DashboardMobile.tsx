@@ -201,24 +201,42 @@ export const DashboardMobile = ({
         </Alert>
       )}
 
-      {/* ── Stat Cards Grid (Desktop card style) ── */}
-      <div className="grid grid-cols-2 gap-2.5">
+      {/* ── Stat Cards — Compact Horizontal Scroll ── */}
+      <div
+        className="flex gap-2.5 overflow-x-auto pb-1.5 snap-x snap-mandatory scrollbar-none -mx-4 px-4"
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+      >
         {loading
           ? [1, 2, 3, 4, 5, 6].map((i) => (
-              <Card key={i} className="animate-pulse h-20 bg-muted/50 border-0" />
+              <Card
+                key={i}
+                className="shrink-0 w-32 h-16 rounded-xl animate-pulse bg-muted/50 border-0 snap-start"
+              />
             ))
           : statCards.map((stat) => {
               const Icon = stat.icon;
               return (
-                <Card key={stat.title} className={cn("border border-border/80 p-3 shadow-none", stat.bgColor)}>
-                  <div className="flex items-center justify-between pb-1">
-                    <span className="text-xs font-medium text-muted-foreground truncate">{stat.title}</span>
-                    <Icon className={cn("h-4 w-4 shrink-0", stat.color)} />
+                <Card
+                  key={stat.title}
+                  className={cn(
+                    "shrink-0 snap-start min-w-[128px] max-w-[160px] p-2.5 rounded-xl border border-border/80 shadow-none flex flex-col justify-between",
+                    stat.bgColor
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="text-[11px] font-medium text-muted-foreground truncate">
+                      {stat.title}
+                    </span>
+                    <Icon className={cn("h-3.5 w-3.5 shrink-0", stat.color)} />
                   </div>
-                  <div>
-                    <div className="text-lg font-bold text-foreground tracking-tight">{stat.value}</div>
+                  <div className="mt-1">
+                    <span className="text-sm font-bold text-foreground tracking-tight leading-tight block truncate">
+                      {stat.value}
+                    </span>
                     {stat.subtitle && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{stat.subtitle}</p>
+                      <span className="text-[9px] text-muted-foreground font-medium block mt-0.5 leading-none">
+                        {stat.subtitle}
+                      </span>
                     )}
                   </div>
                 </Card>
