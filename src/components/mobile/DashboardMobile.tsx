@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Car,
@@ -20,7 +20,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Reservation } from "@/pages/Reservations";
 import { formatAngolaDate, parseAngolaDate, getAngolaDate, isSameAngolaDay } from "@/lib/dateUtils";
 import { differenceInDays, format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, startOfDay } from "date-fns";
@@ -53,11 +55,11 @@ interface DashboardMobileProps {
 }
 
 const statusColors: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400",
-  confirmed: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400",
-  active: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400",
-  completed: "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-900/30 dark:text-gray-400",
-  cancelled: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400",
+  pending: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400",
+  confirmed: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400",
+  active: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400",
+  completed: "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-900/40 dark:text-gray-400",
+  cancelled: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400",
 };
 
 const statusLabels: Record<string, string> = {
@@ -69,16 +71,16 @@ const statusLabels: Record<string, string> = {
 };
 
 const CAR_COLORS = [
-  { bg: "bg-blue-500", border: "border-blue-600", text: "text-blue-700", light: "bg-blue-100 dark:bg-blue-900/40 text-blue-900 dark:text-blue-200" },
-  { bg: "bg-emerald-500", border: "border-emerald-600", text: "text-emerald-700", light: "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-900 dark:text-emerald-200" },
-  { bg: "bg-rose-500", border: "border-rose-600", text: "text-rose-700", light: "bg-rose-100 dark:bg-rose-900/40 text-rose-900 dark:text-rose-200" },
-  { bg: "bg-amber-500", border: "border-amber-600", text: "text-amber-700", light: "bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200" },
-  { bg: "bg-purple-500", border: "border-purple-600", text: "text-purple-700", light: "bg-purple-100 dark:bg-purple-900/40 text-purple-900 dark:text-purple-200" },
-  { bg: "bg-pink-500", border: "border-pink-600", text: "text-pink-700", light: "bg-pink-100 dark:bg-pink-900/40 text-pink-900 dark:text-pink-200" },
-  { bg: "bg-indigo-500", border: "border-indigo-600", text: "text-indigo-700", light: "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-900 dark:text-indigo-200" },
-  { bg: "bg-teal-500", border: "border-teal-600", text: "text-teal-700", light: "bg-teal-100 dark:bg-teal-900/40 text-teal-900 dark:text-teal-200" },
-  { bg: "bg-cyan-500", border: "border-cyan-600", text: "text-cyan-700", light: "bg-cyan-100 dark:bg-cyan-900/40 text-cyan-900 dark:text-cyan-200" },
-  { bg: "bg-orange-500", border: "border-orange-600", text: "text-orange-700", light: "bg-orange-100 dark:bg-orange-900/40 text-orange-900 dark:text-orange-200" },
+  { bg: "bg-blue-500", border: "border-blue-600", text: "text-blue-700", light: "bg-blue-100 dark:bg-blue-950/40" },
+  { bg: "bg-green-500", border: "border-green-600", text: "text-green-700", light: "bg-green-100 dark:bg-green-950/40" },
+  { bg: "bg-red-500", border: "border-red-600", text: "text-red-700", light: "bg-red-100 dark:bg-red-950/40" },
+  { bg: "bg-yellow-500", border: "border-yellow-600", text: "text-yellow-700", light: "bg-yellow-100 dark:bg-yellow-950/40" },
+  { bg: "bg-purple-500", border: "border-purple-600", text: "text-purple-700", light: "bg-purple-100 dark:bg-purple-950/40" },
+  { bg: "bg-pink-500", border: "border-pink-600", text: "text-pink-700", light: "bg-pink-100 dark:bg-pink-950/40" },
+  { bg: "bg-indigo-500", border: "border-indigo-600", text: "text-indigo-700", light: "bg-indigo-100 dark:bg-indigo-950/40" },
+  { bg: "bg-orange-500", border: "border-orange-600", text: "text-orange-700", light: "bg-orange-100 dark:bg-orange-950/40" },
+  { bg: "bg-teal-500", border: "border-teal-600", text: "text-teal-700", light: "bg-teal-100 dark:bg-teal-950/40" },
+  { bg: "bg-cyan-500", border: "border-cyan-600", text: "text-cyan-700", light: "bg-cyan-100 dark:bg-cyan-950/40" },
 ];
 
 export const DashboardMobile = ({
@@ -94,20 +96,11 @@ export const DashboardMobile = ({
   onRefetch,
 }: DashboardMobileProps) => {
   const navigate = useNavigate();
-  const scrollRef = useRef<HTMLDivElement>(null);
   const today = getAngolaDate();
 
   // Calendar states
   const [calendarDate, setCalendarDate] = useState<Date>(() => getAngolaDate());
   const [selectedDay, setSelectedDay] = useState<Date | null>(() => getAngolaDate());
-  const [showLegend, setShowLegend] = useState(false);
-
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Bom dia";
-    if (hour < 18) return "Boa tarde";
-    return "Boa noite";
-  }, []);
 
   // Filter reservations for current calendar month
   const monthReservations = useMemo(() => {
@@ -121,7 +114,7 @@ export const DashboardMobile = ({
     });
   }, [reservations, calendarDate]);
 
-  // Color mapping per car
+  // Color mapping per car (identical to desktop Dashboard.tsx)
   const carColorMap = useMemo(() => {
     const map = new Map<string, (typeof CAR_COLORS)[0] & { carId: string; carName: string }>();
     const activeReservations = reservations.filter((r) => r.status !== "cancelled");
@@ -172,156 +165,77 @@ export const DashboardMobile = ({
       .slice(0, 10);
   }, [reservations]);
 
+  // Stat cards matching desktop Dashboard.tsx
   const statCards = [
-    {
-      label: "Reservas Ativas",
-      value: stats.activeReservations,
-      icon: Calendar,
-      from: "from-blue-500",
-      to: "to-blue-600",
-      shadow: "shadow-blue-500/25",
-    },
-    {
-      label: "Carros Disponíveis",
-      value: `${stats.availableCars}/${stats.totalCars}`,
-      icon: Car,
-      from: "from-emerald-500",
-      to: "to-emerald-600",
-      shadow: "shadow-emerald-500/25",
-      sub: `${stats.carsOut} fora`,
-    },
-    {
-      label: "Clientes",
-      value: stats.totalCustomers,
-      icon: Users,
-      from: "from-violet-500",
-      to: "to-violet-600",
-      shadow: "shadow-violet-500/25",
-    },
-    {
-      label: "Receita Total",
-      value: stats.totalRevenue.toLocaleString("pt-AO", {
-        style: "currency",
-        currency: "AOA",
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }),
-      icon: DollarSign,
-      from: "from-amber-500",
-      to: "to-amber-600",
-      shadow: "shadow-amber-500/25",
-      isWide: true,
-    },
-    {
-      label: "Concluídas",
-      value: stats.completedReservations,
-      icon: CheckCircle,
-      from: "from-teal-500",
-      to: "to-teal-600",
-      shadow: "shadow-teal-500/25",
-    },
-    {
-      label: "Canceladas",
-      value: stats.cancelledReservations,
-      icon: XCircle,
-      from: "from-rose-500",
-      to: "to-rose-600",
-      shadow: "shadow-rose-500/25",
-    },
+    { title: "Reservas Ativas", value: stats.activeReservations, icon: Calendar, color: "text-blue-600", bgColor: "bg-blue-50 dark:bg-blue-950/40" },
+    { title: "Carros Disponíveis", value: `${stats.availableCars}/${stats.totalCars}`, icon: Car, color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950/40", subtitle: `${stats.carsOut} fora` },
+    { title: "Clientes Ativos", value: stats.totalCustomers, icon: Users, color: "text-purple-600", bgColor: "bg-purple-50 dark:bg-purple-950/40" },
+    { title: "Receita Total", value: `${stats.totalRevenue.toLocaleString("pt-AO", { style: "currency", currency: "AOA", minimumFractionDigits: 0 })}`, icon: DollarSign, color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950/40" },
+    { title: "Concluídas", value: stats.completedReservations, icon: CheckCircle, color: "text-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-950/40" },
+    { title: "Canceladas", value: stats.cancelledReservations, icon: XCircle, color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-950/40" },
   ];
 
   const alertCount = upcomingReservations.length + upcomingReturns.length;
 
   return (
-    <div className="px-4 pb-4 space-y-5">
-      {/* ── Greeting Header ── */}
-      <div className="pt-2 pb-1">
-        <p className="text-muted-foreground text-sm font-medium">{greeting} 👋</p>
+    <div className="px-4 py-4 space-y-6">
+      {/* ── Page Header — clean desktop style without emojis ── */}
+      <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {format(today, "EEEE, d 'de' MMMM", { locale: ptBR })}
+          Visão geral do sistema de reservas
         </p>
       </div>
 
-      {/* ── Rate Limit Banner ── */}
+      {/* ── Rate Limit Alert ── */}
       {isRateLimited && (
-        <div className="flex items-center gap-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl px-4 py-3">
-          <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-          <p className="text-xs text-amber-700 dark:text-amber-300 flex-1">
-            Sincronização em curso. Dados serão atualizados em breve.
-          </p>
-          <Button variant="ghost" size="sm" className="text-amber-700 h-7 px-2 text-xs" onClick={onRefetch}>
-            Recarregar
-          </Button>
-        </div>
+        <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200">
+          <AlertCircle className="h-4 w-4 text-amber-600" />
+          <AlertTitle className="text-xs font-semibold">Sincronização em curso</AlertTitle>
+          <AlertDescription className="text-xs flex items-center justify-between gap-2 mt-1">
+            <span>Dados em atualização...</span>
+            <Button variant="outline" size="sm" className="h-7 text-xs px-2" onClick={onRefetch}>
+              Recarregar
+            </Button>
+          </AlertDescription>
+        </Alert>
       )}
 
-      {/* ── Stat Cards — horizontal scrollable ── */}
-      <div>
-        <div
-          ref={scrollRef}
-          className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-none -mx-4 px-4"
-          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-        >
-          {loading
-            ? [1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="shrink-0 w-36 h-28 rounded-2xl bg-muted animate-pulse snap-start"
-                />
-              ))
-            : statCards.map((card) => {
-                const Icon = card.icon;
-                return (
-                  <div
-                    key={card.label}
-                    className={cn(
-                      "shrink-0 snap-start rounded-2xl p-4 flex flex-col justify-between shadow-lg",
-                      `bg-gradient-to-br ${card.from} ${card.to}`,
-                      card.shadow,
-                      card.isWide ? "w-44" : "w-36",
-                      "min-h-[112px]"
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="p-1.5 rounded-xl bg-white/20">
-                        <Icon className="h-4 w-4 text-white" />
-                      </div>
-                      {card.sub && (
-                        <span className="text-[10px] text-white/80 bg-white/15 px-1.5 py-0.5 rounded-full font-medium">
-                          {card.sub}
-                        </span>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-white/75 text-[11px] font-medium leading-tight mb-0.5">
-                        {card.label}
-                      </p>
-                      <p className="text-white font-bold text-xl leading-tight tracking-tight">
-                        {card.value}
-                      </p>
-                    </div>
+      {/* ── Stat Cards Grid (Desktop card style) ── */}
+      <div className="grid grid-cols-2 gap-2.5">
+        {loading
+          ? [1, 2, 3, 4, 5, 6].map((i) => (
+              <Card key={i} className="animate-pulse h-20 bg-muted/50 border-0" />
+            ))
+          : statCards.map((stat) => {
+              const Icon = stat.icon;
+              return (
+                <Card key={stat.title} className={cn("border border-border/80 p-3 shadow-none", stat.bgColor)}>
+                  <div className="flex items-center justify-between pb-1">
+                    <span className="text-xs font-medium text-muted-foreground truncate">{stat.title}</span>
+                    <Icon className={cn("h-4 w-4 shrink-0", stat.color)} />
                   </div>
-                );
-              })}
-        </div>
+                  <div>
+                    <div className="text-lg font-bold text-foreground tracking-tight">{stat.value}</div>
+                    {stat.subtitle && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{stat.subtitle}</p>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
       </div>
 
-      {/* ── Alertas ── */}
+      {/* ── Alertas (Alert Cards matching desktop) ── */}
       {alertCount > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Bell className="h-4 w-4 text-orange-500" />
-            <h2 className="font-semibold text-sm">
-              Alertas
-              <span className="ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-orange-500 text-white text-[10px] font-bold">
-                {alertCount}
-              </span>
-            </h2>
-          </div>
-
-          <div className="space-y-2">
-            {/* Reservas próximas */}
+        <Card>
+          <CardHeader className="p-4 pb-2">
+            <div className="flex items-center gap-2">
+              <Bell className="h-4 w-4 text-orange-600" />
+              <CardTitle className="text-base font-semibold">Alertas ({alertCount})</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-1 space-y-2">
             {upcomingReservations.map((reservation) => {
               const startDate = parseAngolaDate(reservation.start_date);
               const endDate = parseAngolaDate(reservation.end_date);
@@ -332,10 +246,10 @@ export const DashboardMobile = ({
               const isExpanded = expandedAlerts.has(reservation.id);
 
               const alertTitle = isStartingToday
-                ? "Começa HOJE"
+                ? "Reserva começa HOJE"
                 : isEndingSoon
-                ? "Termina em breve"
-                : `Em ${daysUntil} ${daysUntil === 1 ? "dia" : "dias"}`;
+                ? "Reserva termina em breve"
+                : `Reserva em ${daysUntil} ${daysUntil === 1 ? "dia" : "dias"}`;
 
               return (
                 <Collapsible
@@ -347,79 +261,50 @@ export const DashboardMobile = ({
                     setExpandedAlerts(s);
                   }}
                 >
-                  <div
-                    className={cn(
-                      "rounded-2xl border px-4 py-3 transition-colors",
-                      isStartingToday
-                        ? "bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800"
-                        : "bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800"
-                    )}
-                  >
-                    <CollapsibleTrigger className="w-full">
-                      <div className="flex items-center justify-between gap-2 w-full">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <AlertCircle
-                            className={cn(
-                              "h-4 w-4 shrink-0",
-                              isStartingToday ? "text-red-500" : "text-orange-500"
-                            )}
-                          />
+                  <Alert variant={isStartingToday ? "destructive" : "default"} className="p-3 cursor-pointer">
+                    <CollapsibleTrigger asChild>
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <AlertCircle className="h-4 w-4 shrink-0" />
                           <div className="text-left min-w-0">
-                            <p className={cn("text-xs font-bold", isStartingToday ? "text-red-700 dark:text-red-400" : "text-orange-700 dark:text-orange-400")}>
-                              {alertTitle}
-                            </p>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {reservation.cars
-                                ? `${reservation.cars.brand} ${reservation.cars.model}`
-                                : "Carro N/A"}{" "}
-                              · {reservation.customers?.name || "N/A"}
-                            </p>
+                            <AlertTitle className="text-xs font-semibold truncate">{alertTitle}</AlertTitle>
+                            <AlertDescription className="text-[11px] text-muted-foreground truncate">
+                              {reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Veículo N/A"} - {reservation.customers?.name || "Cliente N/A"}
+                            </AlertDescription>
                           </div>
                         </div>
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                        )}
+                        {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0 ml-1" /> : <ChevronDown className="h-4 w-4 shrink-0 ml-1" />}
                       </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
-                      <div className="mt-3 pt-3 border-t border-current/10 space-y-1 text-xs text-muted-foreground">
-                        <p>
-                          <span className="font-medium text-foreground">Período: </span>
-                          {formatAngolaDate(reservation.start_date)} → {formatAngolaDate(reservation.end_date)}
-                        </p>
-                        <p>
-                          <span className="font-medium text-foreground">Total: </span>
-                          {reservation.total_amount.toFixed(2)} AKZ
-                        </p>
+                      <div className="mt-2 pt-2 border-t border-border/60 text-xs space-y-1">
+                        <p><span className="font-medium">Período:</span> {formatAngolaDate(reservation.start_date)} - {formatAngolaDate(reservation.end_date)}</p>
+                        <p><span className="font-medium">Total:</span> {reservation.total_amount.toLocaleString("pt-AO")} AKZ</p>
                         <Button
                           size="sm"
                           variant="outline"
-                          className="mt-2 w-full h-8 text-xs rounded-xl"
+                          className="mt-2 w-full h-8 text-xs rounded-lg"
                           onClick={() => navigate(`/reservation/${reservation.id}`)}
                         >
-                          Ver Detalhes
-                          <ArrowRight className="h-3 w-3 ml-1" />
+                          Ver Detalhes <ArrowRight className="h-3 w-3 ml-1" />
                         </Button>
                       </div>
                     </CollapsibleContent>
-                  </div>
+                  </Alert>
                 </Collapsible>
               );
             })}
 
-            {/* Retornos próximos */}
             {upcomingReturns.map(({ reservation, daysUntil }) => {
               const isReturningToday = daysUntil === 0;
               const isReturningTomorrow = daysUntil === 1;
               const isExpanded = expandedAlerts.has(`return-${reservation.id}`);
 
               const alertTitle = isReturningToday
-                ? "Retorna HOJE"
+                ? "Carro retorna HOJE"
                 : isReturningTomorrow
-                ? "Retorna AMANHÃ"
-                : `Retorna em ${daysUntil} dias`;
+                ? "Carro retorna AMANHÃ"
+                : `Carro retorna em ${daysUntil} dias`;
 
               return (
                 <Collapsible
@@ -431,100 +316,73 @@ export const DashboardMobile = ({
                     setExpandedAlerts(s);
                   }}
                 >
-                  <div
-                    className={cn(
-                      "rounded-2xl border px-4 py-3 transition-colors",
-                      isReturningToday
-                        ? "bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800"
-                        : "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800"
-                    )}
-                  >
-                    <CollapsibleTrigger className="w-full">
-                      <div className="flex items-center justify-between gap-2 w-full">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <Truck
-                            className={cn(
-                              "h-4 w-4 shrink-0",
-                              isReturningToday ? "text-red-500" : "text-blue-500"
-                            )}
-                          />
+                  <Alert variant={isReturningToday ? "destructive" : "default"} className="p-3 cursor-pointer">
+                    <CollapsibleTrigger asChild>
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <Truck className="h-4 w-4 shrink-0" />
                           <div className="text-left min-w-0">
-                            <p className={cn("text-xs font-bold", isReturningToday ? "text-red-700 dark:text-red-400" : "text-blue-700 dark:text-blue-400")}>
-                              {alertTitle}
-                            </p>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {reservation.cars
-                                ? `${reservation.cars.brand} ${reservation.cars.model}`
-                                : "Carro N/A"}{" "}
-                              · {reservation.customers?.name || "N/A"}
-                            </p>
+                            <AlertTitle className="text-xs font-semibold truncate">{alertTitle}</AlertTitle>
+                            <AlertDescription className="text-[11px] text-muted-foreground truncate">
+                              {reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Veículo N/A"} - {reservation.customers?.name || "Cliente N/A"}
+                            </AlertDescription>
                           </div>
                         </div>
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                        )}
+                        {isExpanded ? <ChevronUp className="h-4 w-4 shrink-0 ml-1" /> : <ChevronDown className="h-4 w-4 shrink-0 ml-1" />}
                       </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
-                      <div className="mt-3 pt-3 border-t border-current/10 space-y-1 text-xs text-muted-foreground">
-                        <p>
-                          <span className="font-medium text-foreground">Retorno: </span>
-                          {formatAngolaDate(reservation.end_date)}
-                        </p>
-                        <p className="text-muted-foreground/70 text-[11px]">Carro está fora desde o checkout</p>
+                      <div className="mt-2 pt-2 border-t border-border/60 text-xs space-y-1">
+                        <p><span className="font-medium">Data de retorno:</span> {formatAngolaDate(reservation.end_date)}</p>
                         <Button
                           size="sm"
                           variant="outline"
-                          className="mt-2 w-full h-8 text-xs rounded-xl"
+                          className="mt-2 w-full h-8 text-xs rounded-lg"
                           onClick={() => navigate(`/reservation/${reservation.id}`)}
                         >
-                          Ver Detalhes
-                          <ArrowRight className="h-3 w-3 ml-1" />
+                          Ver Detalhes <ArrowRight className="h-3 w-3 ml-1" />
                         </Button>
                       </div>
                     </CollapsibleContent>
-                  </div>
+                  </Alert>
                 </Collapsible>
               );
             })}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* ── Calendário de Reservas (Mobile) ── */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-primary" />
-            <h2 className="font-semibold text-sm">Calendário de Reservas</h2>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-primary text-xs h-7 px-2 rounded-lg"
-            onClick={() => navigate("/schedule")}
-          >
-            Agenda completa
-            <ChevronRight className="h-3 w-3 ml-1" />
-          </Button>
-        </div>
-
-        <div className="rounded-2xl border border-border/60 bg-card p-3 shadow-sm space-y-3">
-          {/* Controls: Month Navigation */}
+      {/* ── Calendário de Reservas (Clean desktop style wrapped in Card) ── */}
+      <Card>
+        <CardHeader className="p-4 pb-3">
           <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-primary" />
+              Calendário de Reservas
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs h-7 px-2 text-primary hover:text-primary"
+              onClick={() => navigate("/schedule")}
+            >
+              Agenda <ChevronRight className="h-3 w-3 ml-1" />
+            </Button>
+          </div>
+
+          {/* Month Selector Controls */}
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/60">
             <Button
               variant="outline"
               size="icon"
-              className="h-8 w-8 rounded-xl shrink-0"
+              className="h-8 w-8 rounded-lg"
               onClick={() => setCalendarDate((d) => addMonths(d, -1))}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
 
             <div className="text-center min-w-0 flex-1 px-2">
-              <span className="font-bold text-sm capitalize truncate block">
+              <span className="font-semibold text-sm capitalize truncate block">
                 {format(calendarDate, "MMMM yyyy", { locale: ptBR })}
               </span>
               {!isSameAngolaDay(calendarDate, today) && (
@@ -535,7 +393,7 @@ export const DashboardMobile = ({
                   }}
                   className="text-[10px] text-primary hover:underline font-medium block mx-auto mt-0.5"
                 >
-                  Voltar para Hoje
+                  Hoje
                 </button>
               )}
             </div>
@@ -543,116 +401,95 @@ export const DashboardMobile = ({
             <Button
               variant="outline"
               size="icon"
-              className="h-8 w-8 rounded-xl shrink-0"
+              className="h-8 w-8 rounded-lg"
               onClick={() => setCalendarDate((d) => addMonths(d, 1))}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
+        </CardHeader>
 
-          {/* Color Legend (Collapsible) */}
+        <CardContent className="p-4 pt-0 space-y-3">
+          {/* Legenda de Cores (igual ao Desktop) */}
           {carColorMap.size > 0 && (
-            <Collapsible open={showLegend} onOpenChange={setShowLegend}>
-              <div className="bg-muted/40 rounded-xl p-2.5 text-xs">
-                <CollapsibleTrigger className="flex items-center justify-between w-full text-muted-foreground font-medium text-[11px]">
-                  <span>Legenda de Veículos ({carColorMap.size})</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-primary font-normal">{showLegend ? "Ocultar" : "Mostrar"}</span>
-                    {showLegend ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            <div className="border rounded-lg p-2.5 bg-muted/20 text-xs">
+              <span className="font-semibold text-[11px] text-muted-foreground block mb-1.5">
+                Legenda de Cores
+              </span>
+              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                {Array.from(carColorMap.values()).map((carColor) => (
+                  <div key={carColor.carId} className="flex items-center gap-1.5 min-w-0">
+                    <div className={cn("w-3 h-3 rounded shrink-0 border", carColor.bg, carColor.border)} />
+                    <span className="truncate text-foreground font-medium">{carColor.carName}</span>
                   </div>
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-2 pt-2 border-t border-border/40">
-                  <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                    {Array.from(carColorMap.values()).map((carColor) => (
-                      <div key={carColor.carId} className="flex items-center gap-1.5 min-w-0">
-                        <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", carColor.bg)} />
-                        <span className="truncate text-foreground font-medium">{carColor.carName}</span>
-                      </div>
-                    ))}
-                  </div>
-                </CollapsibleContent>
+                ))}
               </div>
-            </Collapsible>
+            </div>
           )}
 
           {/* Days Header */}
-          <div className="grid grid-cols-7 gap-1 text-center">
-            {["D", "S", "T", "Q", "Q", "S", "S"].map((day, idx) => (
-              <div key={idx} className="text-[11px] font-bold text-muted-foreground py-0.5">
+          <div className="grid grid-cols-7 gap-1 text-center border-b pb-1">
+            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day, idx) => (
+              <div key={idx} className="text-[10px] font-semibold text-muted-foreground">
                 {day}
               </div>
             ))}
           </div>
 
-          {/* Calendar Grid */}
+          {/* Month Days Grid */}
           {reservationsLoading ? (
-            <div className="h-48 rounded-xl bg-muted animate-pulse flex items-center justify-center text-xs text-muted-foreground">
-              Carregando calendário...
-            </div>
+            <div className="text-center py-8 text-xs text-muted-foreground">Carregando calendário...</div>
           ) : (
             <div className="grid grid-cols-7 gap-1">
               {days.map((day, dayIndex) => {
                 if (day === null) {
-                  return <div key={`empty-${dayIndex}`} className="h-14 rounded-xl bg-muted/15" />;
+                  return <div key={`empty-${dayIndex}`} className="min-h-[48px] border rounded p-0.5 bg-muted/20" />;
                 }
 
                 const dayReservations = getReservationsForDay(day);
                 const isToday = isSameAngolaDay(day, today);
                 const isSelected = selectedDay && isSameAngolaDay(day, selectedDay);
-                const hasReservations = dayReservations.length > 0;
 
                 return (
                   <button
                     key={day.toISOString()}
                     onClick={() => setSelectedDay(day)}
                     className={cn(
-                      "h-14 rounded-xl p-1 flex flex-col justify-between items-center transition-all text-left relative overflow-hidden border",
+                      "min-h-[48px] border rounded p-1 flex flex-col justify-between text-left transition-colors relative",
                       isSelected
-                        ? "border-primary ring-2 ring-primary/20 bg-primary/5"
+                        ? "border-primary ring-1 ring-primary bg-primary/5"
                         : isToday
-                        ? "border-primary/50 bg-accent/40"
-                        : hasReservations
-                        ? "border-border/80 bg-card hover:bg-muted/30"
-                        : "border-transparent bg-muted/20 hover:bg-muted/40"
+                        ? "bg-accent/50 border-primary/40"
+                        : "bg-card hover:bg-muted/30"
                     )}
                   >
-                    {/* Day Number */}
                     <span
                       className={cn(
-                        "text-[11px] font-semibold flex items-center justify-center w-5 h-5 rounded-full",
-                        isToday
-                          ? "bg-primary text-primary-foreground font-bold"
-                          : isSelected
-                          ? "text-primary font-bold"
-                          : "text-foreground"
+                        "text-[10px] font-semibold block leading-tight",
+                        isToday ? "text-primary font-bold" : "text-foreground"
                       )}
                     >
                       {format(day, "d")}
                     </span>
 
-                    {/* Reservation Badges */}
-                    <div className="w-full space-y-0.5 mt-0.5 min-h-[16px] flex flex-col justify-end">
+                    <div className="space-y-0.5 mt-1">
                       {dayReservations.slice(0, 2).map((reservation) => {
                         const carColor = carColorMap.get(reservation.car_id);
-                        const carName = reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Veículo";
                         return (
                           <div
                             key={reservation.id}
                             className={cn(
-                              "text-[8px] leading-tight px-1 py-0.5 rounded truncate font-medium flex items-center gap-1",
-                              carColor ? carColor.light : "bg-muted text-muted-foreground"
+                              "text-[8px] p-0.5 rounded border truncate font-medium leading-tight",
+                              carColor ? `${carColor.light} ${carColor.border}` : "bg-muted border-border"
                             )}
-                            title={`${carName} - ${reservation.customers?.name || "Cliente"}`}
                           >
-                            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", carColor?.bg || "bg-primary")} />
-                            <span className="truncate">{carName}</span>
+                            {reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Veículo"}
                           </div>
                         );
                       })}
-
                       {dayReservations.length > 2 && (
-                        <div className="text-[7px] font-bold text-center text-muted-foreground leading-none">
-                          +{dayReservations.length - 2} mais
+                        <div className="text-[7px] text-muted-foreground font-semibold text-center leading-none">
+                          +{dayReservations.length - 2}
                         </div>
                       )}
                     </div>
@@ -666,16 +503,16 @@ export const DashboardMobile = ({
           {selectedDay && (
             <div className="mt-3 pt-3 border-t border-border/60">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-foreground capitalize">
+                <span className="text-xs font-semibold capitalize text-foreground">
                   {format(selectedDay, "EEEE, d 'de' MMMM", { locale: ptBR })}
-                </p>
-                <Badge variant="outline" className="text-[10px] rounded-full font-medium">
+                </span>
+                <Badge variant="outline" className="text-[10px] font-normal">
                   {selectedDayReservations.length} {selectedDayReservations.length === 1 ? "reserva" : "reservas"}
                 </Badge>
               </div>
 
               {selectedDayReservations.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-3 bg-muted/20 rounded-xl">
+                <p className="text-xs text-muted-foreground text-center py-3 bg-muted/20 rounded-lg">
                   Nenhuma reserva para este dia
                 </p>
               ) : (
@@ -686,35 +523,32 @@ export const DashboardMobile = ({
                       <div
                         key={reservation.id}
                         onClick={() => navigate(`/reservation/${reservation.id}`)}
-                        className="p-3 rounded-xl border border-border/60 bg-muted/20 hover:bg-muted/40 transition-all cursor-pointer flex items-center justify-between gap-3"
+                        className="p-2.5 rounded-lg border border-border bg-card hover:bg-muted/40 transition-colors cursor-pointer flex items-center justify-between gap-2"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                          <div className={cn("w-2 h-10 rounded-full shrink-0", carColor?.bg || "bg-primary")} />
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className={cn("w-1.5 h-8 rounded-full shrink-0", carColor?.bg || "bg-primary")} />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="text-xs font-bold text-foreground truncate">
+                              <span className="text-xs font-semibold truncate text-foreground">
                                 {reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Veículo N/A"}
-                              </p>
+                              </span>
                               <Badge
                                 variant="outline"
-                                className={cn("text-[9px] px-1.5 py-0 border rounded-full font-medium shrink-0", statusColors[reservation.status])}
+                                className={cn("text-[9px] px-1.5 py-0 rounded font-normal shrink-0", statusColors[reservation.status])}
                               >
                                 {statusLabels[reservation.status]}
                               </Badge>
                             </div>
                             <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                              {reservation.customers?.name || "Cliente N/A"}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                              {formatAngolaDate(reservation.start_date)} → {formatAngolaDate(reservation.end_date)}
+                              {reservation.customers?.name || "Cliente N/A"} · {formatAngolaDate(reservation.start_date)} - {formatAngolaDate(reservation.end_date)}
                             </p>
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-xs font-bold text-foreground">
-                            {reservation.total_amount.toLocaleString("pt-AO", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} AKZ
-                          </p>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto mt-1" />
+                          <span className="text-xs font-semibold text-foreground">
+                            {reservation.total_amount.toLocaleString("pt-AO")} AKZ
+                          </span>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto mt-0.5" />
                         </div>
                       </div>
                     );
@@ -723,145 +557,114 @@ export const DashboardMobile = ({
               )}
             </div>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* ── Reservas Recentes — Timeline Cards ── */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-primary" />
-            <h2 className="font-semibold text-sm">Reservas Recentes</h2>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-primary text-xs h-7 px-2 rounded-lg"
-            onClick={() => navigate("/reservations")}
-          >
-            Ver todas
-            <ChevronRight className="h-3 w-3 ml-1" />
-          </Button>
-        </div>
-
-        {reservationsLoading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-24 rounded-2xl bg-muted animate-pulse" />
-            ))}
-          </div>
-        ) : recentReservations.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/60 py-10 flex flex-col items-center gap-2 text-muted-foreground">
-            <Calendar className="h-8 w-8 opacity-30" />
-            <p className="text-sm">Sem reservas activas</p>
+      {/* ── Reservas Recentes (Standard Desktop Card Style) ── */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-bold flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-primary" />
+              Reservas Recentes
+            </CardTitle>
             <Button
+              variant="ghost"
               size="sm"
-              variant="outline"
-              className="mt-1 rounded-xl text-xs"
-              onClick={() => navigate("/reservations?new=true")}
+              className="text-xs h-7 px-2 text-primary hover:text-primary"
+              onClick={() => navigate("/reservations")}
             >
-              Criar primeira reserva
+              Ver todas <ChevronRight className="h-3 w-3 ml-1" />
             </Button>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {recentReservations.map((reservation) => {
-              const endDate = parseAngolaDate(reservation.end_date);
-              const daysLeft = differenceInDays(endDate, today);
-              const isActive = reservation.status === "active";
-              const isPending = reservation.status === "pending";
+        </CardHeader>
+        <CardContent className="p-4 pt-1">
+          {reservationsLoading ? (
+            <div className="text-center py-6 text-xs text-muted-foreground">Carregando...</div>
+          ) : recentReservations.length === 0 ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              Sem reservas ativas
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {recentReservations.map((reservation) => {
+                const endDate = parseAngolaDate(reservation.end_date);
+                const daysLeft = differenceInDays(endDate, today);
+                const isActive = reservation.status === "active";
 
-              return (
-                <button
-                  key={reservation.id}
-                  onClick={() => navigate(`/reservation/${reservation.id}`)}
-                  className="w-full text-left rounded-2xl border border-border/60 bg-card hover:bg-muted/40 active:scale-[0.99] transition-all p-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    {/* Left: car icon background */}
-                    <div className={cn(
-                      "p-2.5 rounded-xl shrink-0",
-                      isActive ? "bg-emerald-100 dark:bg-emerald-900/30" : isPending ? "bg-amber-100 dark:bg-amber-900/30" : "bg-muted"
-                    )}>
-                      <Car className={cn(
-                        "h-5 w-5",
-                        isActive ? "text-emerald-600" : isPending ? "text-amber-600" : "text-muted-foreground"
-                      )} />
-                    </div>
-
-                    {/* Middle: info */}
-                    <div className="flex-1 min-w-0">
+                return (
+                  <div
+                    key={reservation.id}
+                    onClick={() => navigate(`/reservation/${reservation.id}`)}
+                    className="p-3 rounded-lg border border-border bg-card hover:bg-muted/40 transition-colors cursor-pointer flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-semibold text-sm text-foreground truncate">
-                          {reservation.cars
-                            ? `${reservation.cars.brand} ${reservation.cars.model}`
-                            : "Veículo N/A"}
-                        </p>
+                        <span className="text-xs font-bold text-foreground truncate">
+                          {reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Veículo N/A"}
+                        </span>
                         <Badge
                           variant="outline"
-                          className={cn("text-[10px] px-1.5 py-0 border rounded-full font-medium shrink-0", statusColors[reservation.status])}
+                          className={cn("text-[9px] px-1.5 py-0 rounded font-normal shrink-0", statusColors[reservation.status])}
                         >
                           {statusLabels[reservation.status]}
                         </Badge>
                       </div>
-
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                      <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                         {reservation.customers?.name || "Cliente N/A"}
                       </p>
-
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-[11px] text-muted-foreground">
-                          {formatAngolaDate(reservation.start_date)} → {formatAngolaDate(reservation.end_date)}
-                        </span>
-                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {formatAngolaDate(reservation.start_date)} - {formatAngolaDate(reservation.end_date)}
+                      </p>
                     </div>
 
-                    {/* Right: amount + days */}
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-bold text-foreground">
-                        {reservation.total_amount.toLocaleString("pt-AO", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      <p className="text-xs font-bold text-foreground">
+                        {reservation.total_amount.toLocaleString("pt-AO")} AKZ
                       </p>
-                      <p className="text-[10px] text-muted-foreground">AKZ</p>
                       {isActive && daysLeft >= 0 && (
-                        <p className="text-[10px] text-emerald-600 font-medium mt-1">
+                        <p className="text-[10px] text-emerald-600 font-medium mt-0.5">
                           {daysLeft === 0 ? "Termina hoje" : `${daysLeft}d restantes`}
                         </p>
                       )}
                     </div>
                   </div>
-                </button>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Acesso Rápido (Clean Card Style) ── */}
+      <Card>
+        <CardHeader className="p-4 pb-2">
+          <CardTitle className="text-sm font-bold">Acesso Rápido</CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-1">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "Agenda", icon: Calendar, path: "/schedule" },
+              { label: "Frota de Veículos", icon: Truck, path: "/fleet" },
+              { label: "Clientes", icon: Users, path: "/customers" },
+              { label: "Resumo", icon: TrendingUp, path: "/rentals-summary" },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <Button
+                  key={item.path}
+                  variant="outline"
+                  className="h-11 justify-start gap-2.5 rounded-lg px-3 text-xs font-medium text-foreground hover:bg-muted"
+                  onClick={() => navigate(item.path)}
+                >
+                  <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </Button>
               );
             })}
           </div>
-        )}
-      </div>
-
-      {/* ── Quick Links ── */}
-      <div>
-        <h2 className="font-semibold text-sm mb-3">Acesso Rápido</h2>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: "Agenda", icon: Calendar, path: "/schedule", color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-950/30" },
-            { label: "Frota", icon: Truck, path: "/fleet", color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-950/30" },
-            { label: "Clientes", icon: Users, path: "/customers", color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-950/30" },
-            { label: "Resumo", icon: TrendingUp, path: "/rentals-summary", color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-950/30" },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className="flex items-center gap-3 p-4 rounded-2xl border border-border/60 bg-card hover:bg-muted/40 active:scale-[0.98] transition-all text-left"
-              >
-                <div className={cn("p-2 rounded-xl", item.bg)}>
-                  <Icon className={cn("h-4 w-4", item.color)} />
-                </div>
-                <span className="text-sm font-medium text-foreground">{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
