@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Car,
@@ -12,17 +12,18 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronRight,
+  ChevronLeft,
   TrendingUp,
   Truck,
   ArrowRight,
+  CalendarDays,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Reservation } from "@/pages/Reservations";
-import { formatAngolaDate, parseAngolaDate, getAngolaDate } from "@/lib/dateUtils";
-import { differenceInDays, format } from "date-fns";
+import { formatAngolaDate, parseAngolaDate, getAngolaDate, isSameAngolaDay } from "@/lib/dateUtils";
+import { differenceInDays, format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +68,19 @@ const statusLabels: Record<string, string> = {
   cancelled: "Cancelada",
 };
 
+const CAR_COLORS = [
+  { bg: "bg-blue-500", border: "border-blue-600", text: "text-blue-700", light: "bg-blue-100 dark:bg-blue-900/40 text-blue-900 dark:text-blue-200" },
+  { bg: "bg-emerald-500", border: "border-emerald-600", text: "text-emerald-700", light: "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-900 dark:text-emerald-200" },
+  { bg: "bg-rose-500", border: "border-rose-600", text: "text-rose-700", light: "bg-rose-100 dark:bg-rose-900/40 text-rose-900 dark:text-rose-200" },
+  { bg: "bg-amber-500", border: "border-amber-600", text: "text-amber-700", light: "bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200" },
+  { bg: "bg-purple-500", border: "border-purple-600", text: "text-purple-700", light: "bg-purple-100 dark:bg-purple-900/40 text-purple-900 dark:text-purple-200" },
+  { bg: "bg-pink-500", border: "border-pink-600", text: "text-pink-700", light: "bg-pink-100 dark:bg-pink-900/40 text-pink-900 dark:text-pink-200" },
+  { bg: "bg-indigo-500", border: "border-indigo-600", text: "text-indigo-700", light: "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-900 dark:text-indigo-200" },
+  { bg: "bg-teal-500", border: "border-teal-600", text: "text-teal-700", light: "bg-teal-100 dark:bg-teal-900/40 text-teal-900 dark:text-teal-200" },
+  { bg: "bg-cyan-500", border: "border-cyan-600", text: "text-cyan-700", light: "bg-cyan-100 dark:bg-cyan-900/40 text-cyan-900 dark:text-cyan-200" },
+  { bg: "bg-orange-500", border: "border-orange-600", text: "text-orange-700", light: "bg-orange-100 dark:bg-orange-900/40 text-orange-900 dark:text-orange-200" },
+];
+
 export const DashboardMobile = ({
   stats,
   loading,
@@ -82,12 +96,74 @@ export const DashboardMobile = ({
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const today = getAngolaDate();
+
+  // Calendar states
+  const [calendarDate, setCalendarDate] = useState<Date>(() => getAngolaDate());
+  const [selectedDay, setSelectedDay] = useState<Date | null>(() => getAngolaDate());
+  const [showLegend, setShowLegend] = useState(false);
+
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return "Bom dia";
     if (hour < 18) return "Boa tarde";
     return "Boa noite";
   }, []);
+
+  // Filter reservations for current calendar month
+  const monthReservations = useMemo(() => {
+    const start = startOfMonth(calendarDate);
+    const end = endOfMonth(calendarDate);
+    return reservations.filter((reservation) => {
+      if (reservation.status === "cancelled") return false;
+      const resStart = parseAngolaDate(reservation.start_date);
+      const resEnd = parseAngolaDate(reservation.end_date);
+      return resEnd >= start && resStart <= end;
+    });
+  }, [reservations, calendarDate]);
+
+  // Color mapping per car
+  const carColorMap = useMemo(() => {
+    const map = new Map<string, (typeof CAR_COLORS)[0] & { carId: string; carName: string }>();
+    const activeReservations = reservations.filter((r) => r.status !== "cancelled");
+    const uniqueCars = new Map<string, { brand: string; model: string; license_plate: string }>();
+    activeReservations.forEach((reservation) => {
+      if (reservation.cars && !uniqueCars.has(reservation.car_id)) {
+        uniqueCars.set(reservation.car_id, reservation.cars);
+      }
+    });
+    let colorIndex = 0;
+    uniqueCars.forEach((car, carId) => {
+      const color = CAR_COLORS[colorIndex % CAR_COLORS.length];
+      map.set(carId, { ...color, carId, carName: `${car.brand} ${car.model}` });
+      colorIndex++;
+    });
+    return map;
+  }, [reservations]);
+
+  const getReservationsForDay = (day: Date) => {
+    const dayStart = startOfDay(day);
+    return monthReservations.filter((reservation) => {
+      const start = parseAngolaDate(reservation.start_date);
+      const end = parseAngolaDate(reservation.end_date);
+      return dayStart >= start && dayStart <= end;
+    });
+  };
+
+  const monthDays = useMemo(() => {
+    return eachDayOfInterval({
+      start: startOfMonth(calendarDate),
+      end: endOfMonth(calendarDate),
+    });
+  }, [calendarDate]);
+
+  const firstDayOfWeek = getDay(startOfMonth(calendarDate));
+  const emptyCells = Array(firstDayOfWeek).fill(null);
+  const days = [...emptyCells, ...monthDays];
+
+  const selectedDayReservations = useMemo(() => {
+    if (!selectedDay) return [];
+    return getReservationsForDay(selectedDay);
+  }, [selectedDay, monthReservations]);
 
   // Recent reservations (last 10, not cancelled)
   const recentReservations = useMemo(() => {
@@ -158,7 +234,6 @@ export const DashboardMobile = ({
 
   return (
     <div className="px-4 pb-4 space-y-5">
-
       {/* ── Greeting Header ── */}
       <div className="pt-2 pb-1">
         <p className="text-muted-foreground text-sm font-medium">{greeting} 👋</p>
@@ -418,6 +493,239 @@ export const DashboardMobile = ({
         </div>
       )}
 
+      {/* ── Calendário de Reservas (Mobile) ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-primary" />
+            <h2 className="font-semibold text-sm">Calendário de Reservas</h2>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-primary text-xs h-7 px-2 rounded-lg"
+            onClick={() => navigate("/schedule")}
+          >
+            Agenda completa
+            <ChevronRight className="h-3 w-3 ml-1" />
+          </Button>
+        </div>
+
+        <div className="rounded-2xl border border-border/60 bg-card p-3 shadow-sm space-y-3">
+          {/* Controls: Month Navigation */}
+          <div className="flex items-center justify-between">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 rounded-xl shrink-0"
+              onClick={() => setCalendarDate((d) => addMonths(d, -1))}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            <div className="text-center min-w-0 flex-1 px-2">
+              <span className="font-bold text-sm capitalize truncate block">
+                {format(calendarDate, "MMMM yyyy", { locale: ptBR })}
+              </span>
+              {!isSameAngolaDay(calendarDate, today) && (
+                <button
+                  onClick={() => {
+                    setCalendarDate(today);
+                    setSelectedDay(today);
+                  }}
+                  className="text-[10px] text-primary hover:underline font-medium block mx-auto mt-0.5"
+                >
+                  Voltar para Hoje
+                </button>
+              )}
+            </div>
+
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 rounded-xl shrink-0"
+              onClick={() => setCalendarDate((d) => addMonths(d, 1))}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Color Legend (Collapsible) */}
+          {carColorMap.size > 0 && (
+            <Collapsible open={showLegend} onOpenChange={setShowLegend}>
+              <div className="bg-muted/40 rounded-xl p-2.5 text-xs">
+                <CollapsibleTrigger className="flex items-center justify-between w-full text-muted-foreground font-medium text-[11px]">
+                  <span>Legenda de Veículos ({carColorMap.size})</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-primary font-normal">{showLegend ? "Ocultar" : "Mostrar"}</span>
+                    {showLegend ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </div>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 pt-2 border-t border-border/40">
+                  <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                    {Array.from(carColorMap.values()).map((carColor) => (
+                      <div key={carColor.carId} className="flex items-center gap-1.5 min-w-0">
+                        <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", carColor.bg)} />
+                        <span className="truncate text-foreground font-medium">{carColor.carName}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </div>
+            </Collapsible>
+          )}
+
+          {/* Days Header */}
+          <div className="grid grid-cols-7 gap-1 text-center">
+            {["D", "S", "T", "Q", "Q", "S", "S"].map((day, idx) => (
+              <div key={idx} className="text-[11px] font-bold text-muted-foreground py-0.5">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar Grid */}
+          {reservationsLoading ? (
+            <div className="h-48 rounded-xl bg-muted animate-pulse flex items-center justify-center text-xs text-muted-foreground">
+              Carregando calendário...
+            </div>
+          ) : (
+            <div className="grid grid-cols-7 gap-1">
+              {days.map((day, dayIndex) => {
+                if (day === null) {
+                  return <div key={`empty-${dayIndex}`} className="h-14 rounded-xl bg-muted/15" />;
+                }
+
+                const dayReservations = getReservationsForDay(day);
+                const isToday = isSameAngolaDay(day, today);
+                const isSelected = selectedDay && isSameAngolaDay(day, selectedDay);
+                const hasReservations = dayReservations.length > 0;
+
+                return (
+                  <button
+                    key={day.toISOString()}
+                    onClick={() => setSelectedDay(day)}
+                    className={cn(
+                      "h-14 rounded-xl p-1 flex flex-col justify-between items-center transition-all text-left relative overflow-hidden border",
+                      isSelected
+                        ? "border-primary ring-2 ring-primary/20 bg-primary/5"
+                        : isToday
+                        ? "border-primary/50 bg-accent/40"
+                        : hasReservations
+                        ? "border-border/80 bg-card hover:bg-muted/30"
+                        : "border-transparent bg-muted/20 hover:bg-muted/40"
+                    )}
+                  >
+                    {/* Day Number */}
+                    <span
+                      className={cn(
+                        "text-[11px] font-semibold flex items-center justify-center w-5 h-5 rounded-full",
+                        isToday
+                          ? "bg-primary text-primary-foreground font-bold"
+                          : isSelected
+                          ? "text-primary font-bold"
+                          : "text-foreground"
+                      )}
+                    >
+                      {format(day, "d")}
+                    </span>
+
+                    {/* Reservation Badges */}
+                    <div className="w-full space-y-0.5 mt-0.5 min-h-[16px] flex flex-col justify-end">
+                      {dayReservations.slice(0, 2).map((reservation) => {
+                        const carColor = carColorMap.get(reservation.car_id);
+                        const carName = reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Veículo";
+                        return (
+                          <div
+                            key={reservation.id}
+                            className={cn(
+                              "text-[8px] leading-tight px-1 py-0.5 rounded truncate font-medium flex items-center gap-1",
+                              carColor ? carColor.light : "bg-muted text-muted-foreground"
+                            )}
+                            title={`${carName} - ${reservation.customers?.name || "Cliente"}`}
+                          >
+                            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", carColor?.bg || "bg-primary")} />
+                            <span className="truncate">{carName}</span>
+                          </div>
+                        );
+                      })}
+
+                      {dayReservations.length > 2 && (
+                        <div className="text-[7px] font-bold text-center text-muted-foreground leading-none">
+                          +{dayReservations.length - 2} mais
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Selected Date Details Panel */}
+          {selectedDay && (
+            <div className="mt-3 pt-3 border-t border-border/60">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-foreground capitalize">
+                  {format(selectedDay, "EEEE, d 'de' MMMM", { locale: ptBR })}
+                </p>
+                <Badge variant="outline" className="text-[10px] rounded-full font-medium">
+                  {selectedDayReservations.length} {selectedDayReservations.length === 1 ? "reserva" : "reservas"}
+                </Badge>
+              </div>
+
+              {selectedDayReservations.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-3 bg-muted/20 rounded-xl">
+                  Nenhuma reserva para este dia
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {selectedDayReservations.map((reservation) => {
+                    const carColor = carColorMap.get(reservation.car_id);
+                    return (
+                      <div
+                        key={reservation.id}
+                        onClick={() => navigate(`/reservation/${reservation.id}`)}
+                        className="p-3 rounded-xl border border-border/60 bg-muted/20 hover:bg-muted/40 transition-all cursor-pointer flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <div className={cn("w-2 h-10 rounded-full shrink-0", carColor?.bg || "bg-primary")} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="text-xs font-bold text-foreground truncate">
+                                {reservation.cars ? `${reservation.cars.brand} ${reservation.cars.model}` : "Veículo N/A"}
+                              </p>
+                              <Badge
+                                variant="outline"
+                                className={cn("text-[9px] px-1.5 py-0 border rounded-full font-medium shrink-0", statusColors[reservation.status])}
+                              >
+                                {statusLabels[reservation.status]}
+                              </Badge>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                              {reservation.customers?.name || "Cliente N/A"}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {formatAngolaDate(reservation.start_date)} → {formatAngolaDate(reservation.end_date)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs font-bold text-foreground">
+                            {reservation.total_amount.toLocaleString("pt-AO", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} AKZ
+                          </p>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground ml-auto mt-1" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* ── Reservas Recentes — Timeline Cards ── */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -458,7 +766,6 @@ export const DashboardMobile = ({
         ) : (
           <div className="space-y-3">
             {recentReservations.map((reservation) => {
-              const startDate = parseAngolaDate(reservation.start_date);
               const endDate = parseAngolaDate(reservation.end_date);
               const daysLeft = differenceInDays(endDate, today);
               const isActive = reservation.status === "active";
