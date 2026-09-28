@@ -11,6 +11,8 @@ import { format, eachDayOfInterval, startOfMonth, endOfMonth, addMonths, startOf
 import { ptBR } from "date-fns/locale";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { parseAngolaDate, getAngolaDate, formatAngolaDate, isSameAngolaDay } from "@/lib/dateUtils";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { ReservationsMobile } from "@/components/mobile/ReservationsMobile";
 
 export interface Reservation {
   id: string;
@@ -60,14 +62,17 @@ const Reservations = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingReservation, setEditingReservation] = useState<Reservation | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     fetchReservations();
   }, []);
 
-  // Verificar se há um ID de reserva na URL para editar
+  // Verificar se há um ID de reserva na URL para editar ou solicitação de nova reserva
   useEffect(() => {
     const editId = searchParams.get("edit");
+    const isNew = searchParams.get("new") === "true";
+
     if (editId && reservations.length > 0) {
       const reservation = reservations.find(r => r.id === editId);
       if (reservation) {
@@ -75,6 +80,10 @@ const Reservations = () => {
         setShowForm(true);
         setSearchParams({}); // Limpar o parâmetro da URL
       }
+    } else if (isNew) {
+      setEditingReservation(null);
+      setShowForm(true);
+      setSearchParams({});
     }
   }, [searchParams, reservations, setSearchParams]);
 
@@ -201,6 +210,39 @@ const Reservations = () => {
   // Criar array com células vazias antes do primeiro dia para alinhar o calendário
   const emptyCells = Array(firstDayOfWeek).fill(null);
   const days = [...emptyCells, ...monthDays];
+
+  // ── Mobile View ──
+  if (isMobile) {
+    return (
+      <Layout>
+        {showForm ? (
+          <div className="px-4 py-4">
+            <div className="flex items-center gap-3 mb-4">
+              <Button variant="ghost" size="sm" className="rounded-xl" onClick={handleClose}>
+                ← Voltar
+              </Button>
+              <h2 className="text-lg font-bold">
+                {editingReservation ? "Editar Reserva" : "Nova Reserva"}
+              </h2>
+            </div>
+            <Card>
+              <CardContent className="pt-4">
+                <ReservationForm reservation={editingReservation} onClose={handleClose} />
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <ReservationsMobile
+            reservations={reservations}
+            loading={loading}
+            onEdit={handleEdit}
+            onRefresh={fetchReservations}
+            onNew={() => { setEditingReservation(null); setShowForm(true); }}
+          />
+        )}
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

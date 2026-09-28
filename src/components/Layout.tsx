@@ -4,11 +4,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { isRateLimitError, isAuthError } from "@/lib/supabaseSafe";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
-import { Car, Calendar, Users, LayoutDashboard, LogOut, UserCircle, Settings, Truck, FileText, ChevronLeft, ChevronRight, Menu, Package, Warehouse, ShoppingCart, ArrowDownCircle, ArrowUpCircle, ClipboardCheck, Wrench, ChevronDown, ChevronUp } from "lucide-react";
+import { Car, Calendar, Users, LayoutDashboard, LogOut, UserCircle, Settings, Truck, FileText, ChevronLeft, ChevronRight, Package, Warehouse, ShoppingCart, ArrowDownCircle, ArrowUpCircle, ClipboardCheck, Wrench, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { MobileBottomBar } from "@/components/mobile/MobileBottomBar";
+import { MobileTopBar } from "@/components/mobile/MobileTopBar";
 
 interface LayoutProps {
   children: ReactNode;
@@ -25,7 +27,6 @@ const Layout = ({ children }: LayoutProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [company, setCompany] = useState<CompanyBranding | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [stockMenuOpen, setStockMenuOpen] = useState(false);
@@ -241,141 +242,16 @@ const Layout = ({ children }: LayoutProps) => {
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Botão Menu Mobile */}
+      {/* TopBar Mobile com Menu para o resto das páginas */}
       {isMobile && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-card border-b border-border p-4 flex items-center justify-between">
-          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0">
-              <div className="h-full flex flex-col">
-                <div className="border-b border-border p-4">
-                  <div className="flex items-center gap-2">
-                    <img src={logoUrl} alt={appName} className="h-8 w-auto object-contain" />
-                    <h1 className="text-lg font-bold truncate">{appName}</h1>
-                  </div>
-                </div>
-                <nav className="flex-1 overflow-y-auto space-y-2 p-4">
-                  {mainMenuItems.map((item) => (
-                    <Button
-                      key={item.path}
-                      variant={location.pathname === item.path ? "secondary" : "ghost"}
-                      className={cn(
-                        "w-full justify-start",
-                        location.pathname === item.path && "bg-secondary",
-                        item.highlight && "font-semibold"
-                      )}
-                      onClick={() => {
-                        navigate(item.path);
-                        setMobileMenuOpen(false);
-                      }}
-                    >
-                      <item.icon className="h-4 w-4 mr-2" />
-                      {item.label}
-                    </Button>
-                  ))}
-                  
-                  {/* Submenu Gerir Stock no Mobile */}
-                  <Collapsible open={stockMenuOpen} onOpenChange={setStockMenuOpen}>
-                    <CollapsibleTrigger asChild>
-                      <Button
-                        variant={isStockManagementActive ? "secondary" : "ghost"}
-                        className={cn(
-                          "w-full justify-start",
-                          isStockManagementActive && "bg-secondary"
-                        )}
-                      >
-                        <Wrench className="h-4 w-4 mr-2" />
-                        Gerir Stock
-                        {stockMenuOpen ? (
-                          <ChevronUp className="h-4 w-4 ml-auto" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 ml-auto" />
-                        )}
-                      </Button>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <div className="pl-4 space-y-1 mt-1">
-                        {stockManagementItems.map((item) => (
-                          <Button
-                            key={item.path}
-                            variant={location.pathname === item.path ? "secondary" : "ghost"}
-                            className={cn(
-                              "w-full justify-start text-sm",
-                              location.pathname === item.path && "bg-secondary"
-                            )}
-                            onClick={() => {
-                              navigate(item.path);
-                              setMobileMenuOpen(false);
-                            }}
-                          >
-                            <item.icon className="h-3 w-3 mr-2" />
-                            {item.label}
-                          </Button>
-                        ))}
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </nav>
-                <div className="p-4 border-t border-border bg-card">
-                  <div className="mb-2 text-xs text-muted-foreground truncate">
-                    {user?.email || ""}
-                  </div>
-                  <div className="space-y-2">
-                    {(userRole === "admin" || userRole === "owner" || isSuperAdmin) && (
-                      <Button
-                        variant={location.pathname === "/users" ? "secondary" : "outline"}
-                        className={cn(
-                          "w-full justify-start",
-                          location.pathname === "/users" && "bg-secondary"
-                        )}
-                        onClick={() => {
-                          navigate("/users");
-                          setMobileMenuOpen(false);
-                        }}
-                      >
-                        <Users className="h-4 w-4 mr-2" />
-                        Funcionários
-                      </Button>
-                    )}
-                    <Button
-                      variant={location.pathname === "/settings" ? "secondary" : "outline"}
-                      className={cn(
-                        "w-full justify-start",
-                        location.pathname === "/settings" && "bg-secondary"
-                      )}
-                      onClick={() => {
-                        navigate("/settings");
-                        setMobileMenuOpen(false);
-                      }}
-                    >
-                      <Settings className="h-4 w-4 mr-2" />
-                      Configurações
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start"
-                      onClick={() => {
-                        handleLogout();
-                        setMobileMenuOpen(false);
-                      }}
-                    >
-                      <LogOut className="h-4 w-4 mr-2" />
-                      Sair
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </SheetContent>
-          </Sheet>
-          <div className="flex items-center gap-2">
-            <img src={logoUrl} alt={appName} className="h-8 w-auto object-contain bg-transparent" style={{ background: "transparent" }} />
-            <h1 className="text-lg font-bold truncate">{appName}</h1>
-          </div>
-        </div>
+        <MobileTopBar
+          appName={appName}
+          logoUrl={logoUrl}
+          user={user}
+          userRole={userRole}
+          isSuperAdmin={isSuperAdmin}
+          handleLogout={handleLogout}
+        />
       )}
 
       {/* Sidebar Desktop */}
@@ -551,13 +427,16 @@ const Layout = ({ children }: LayoutProps) => {
       </aside>
       )}
 
-      {/* Conteúdo Principal com margem para o sidebar */}
+      {/* Conteúdo Principal com margem para o sidebar e barras de navegação mobile */}
       <main className={cn(
         "flex-1 overflow-auto transition-all duration-300",
-        isMobile ? "pt-16" : sidebarCollapsed ? "ml-16" : "ml-64"
+        isMobile ? "pt-14 pb-20" : sidebarCollapsed ? "ml-16" : "ml-64"
       )}>
         {children}
       </main>
+
+      {/* Navigation Button Bar Mobile */}
+      {isMobile && <MobileBottomBar />}
     </div>
   );
 };

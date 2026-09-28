@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus } from "lucide-react";
 import Layout from "@/components/Layout";
+import { useSearchParams } from "react-router-dom";
 import { CustomerForm } from "@/components/customers/CustomerForm";
 import { CustomerList } from "@/components/customers/CustomerList";
 import { useCompany } from "@/hooks/useCompany";
@@ -22,11 +23,20 @@ export interface Customer {
 }
 
 const Customers = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const { companyId, loading: companyLoading } = useCompany();
+
+  useEffect(() => {
+    if (searchParams.get("new") === "true") {
+      setEditingCustomer(null);
+      setShowForm(true);
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!companyLoading) {

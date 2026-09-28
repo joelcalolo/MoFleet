@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus } from "lucide-react";
 import Layout from "@/components/Layout";
+import { useSearchParams } from "react-router-dom";
 import { CarForm } from "@/components/cars/CarForm";
 import { CarList } from "@/components/cars/CarList";
 import { useCompany } from "@/hooks/useCompany";
@@ -32,11 +33,20 @@ export interface Car {
 }
 
 const Cars = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [cars, setCars] = useState<Car[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingCar, setEditingCar] = useState<Car | null>(null);
   const { companyId, loading: companyLoading } = useCompany();
+
+  useEffect(() => {
+    if (searchParams.get("new") === "true") {
+      setEditingCar(null);
+      setShowForm(true);
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     if (!companyLoading && companyId) {

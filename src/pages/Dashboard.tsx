@@ -12,6 +12,8 @@ import { Reservation } from "@/pages/Reservations";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { parseAngolaDate, getAngolaDate, formatAngolaDate, isSameAngolaDay } from "@/lib/dateUtils";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { DashboardMobile } from "@/components/mobile/DashboardMobile";
 
 interface Stats {
   activeReservations: number;
@@ -215,6 +217,7 @@ async function fetchUpcomingReturnsData(): Promise<Array<{ reservation: Reservat
 const Dashboard = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [expandedAlerts, setExpandedAlerts] = useState<Set<string>>(new Set());
+  const isMobile = useIsMobile();
 
   // React Query — usa defaults globais de App.tsx (staleTime 60s, retry 429→1x, outros→2x)
   const statsQuery = useQuery({
@@ -323,6 +326,30 @@ const Dashboard = () => {
     { title: "Reservas Concluídas", value: stats.completedReservations, icon: CheckCircle, color: "text-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-950" },
     { title: "Reservas Canceladas", value: stats.cancelledReservations, icon: XCircle, color: "text-red-600", bgColor: "bg-red-50 dark:bg-red-950" },
   ];
+
+  // ── Mobile ──
+  if (isMobile) {
+    return (
+      <Layout>
+        <DashboardMobile
+          stats={stats}
+          loading={loading}
+          reservations={reservations}
+          reservationsLoading={reservationsLoading}
+          upcomingReturns={upcomingReturns}
+          upcomingReservations={upcomingReservations}
+          isRateLimited={isRateLimited}
+          expandedAlerts={expandedAlerts}
+          setExpandedAlerts={setExpandedAlerts}
+          onRefetch={() => {
+            statsQuery.refetch();
+            reservationsQuery.refetch();
+            upcomingReturnsQuery.refetch();
+          }}
+        />
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
